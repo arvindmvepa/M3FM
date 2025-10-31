@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import collections
+import re
 
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
@@ -18,8 +19,23 @@ import monai.transforms as mtf
 from sklearn.metrics import roc_auc_score, accuracy_score, f1_score, precision_score, recall_score
 
 # Import from M3FM
-from model.M3FM import M3FM
-from model.pos_embed import interpolate_pos_embed
+from models.m3fm import M3FM
+
+
+# Add filter selection rules
+_RULES = [
+    (0, re.compile(r"\bb7\d|b70f", re.I)),  # Siemens very-sharp
+    (1, re.compile(r"\bb50f?", re.I)),  # Siemens sharp
+    (1, re.compile(r"\bbone|lspluslung|qxd|lung", re.I)),  # GE bone / lung
+    (1, re.compile(r"fc5\d", re.I)),  # Toshiba FC51/FC53
+    (1, re.compile(r"\bphil.*d\b", re.I)),  # Philips D kernels
+    (2, re.compile(r"\bb40f", re.I)),  # Siemens medium-sharp
+    (3, re.compile(r"\bb3\d+f?", re.I)),  # Siemens B30 family
+    (3, re.compile(r"\bfc10|fc0[12]", re.I)),  # Toshiba FC10/FC02/FC01
+    (4, re.compile(r"\bstandard|std", re.I)),  # GE Standard
+    (4, re.compile(r"\bphil.*[bc]\b", re.I)),  # Philips C / B
+    (9, re.compile(r".*")),  # fallback: worst
+]
 
 
 def setup_logger(log_file="training.log", log_to_console=True):
@@ -55,10 +71,11 @@ def compute_aux_loss(logits, targets, pos_weight=None):
 
 
 class AuxVisionDataset(Dataset):
-    def __init__(self, json_path, mode="train", transform=None):
+    def __init__(self, json_path, mode="train", transform=None, img_size=96):
         super().__init__()
         self.mode = mode
         self.transform = transform
+        self.img_size = img_size
 
         with open(json_path, "r") as f:
             self.data_list = json.load(f)
@@ -70,20 +87,33 @@ class AuxVisionDataset(Dataset):
                 "target": datum_dict["numeric_answer"]
             })
 
+        # M3FM-style transforms matching data.py
         if self.transform is None:
             if mode == "train":
                 self.transform = mtf.Compose([
+                    mtf.AddChannel(),
+                    mtf.Orientation(axcodes="RAS"),
+                    mtf.Spacing(pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
+                    mtf.ScaleIntensityRange(a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
+                    mtf.CropForeground(),
+                    mtf.RandSpatialCrop(roi_size=(self.img_size, self.img_size, self.img_size), random_size=False),
+                    mtf.RandFlip(prob=0.5, spatial_axis=0),
+                    mtf.RandFlip(prob=0.5, spatial_axis=1),
+                    mtf.RandFlip(prob=0.5, spatial_axis=2),
+                    mtf.RandRotate90(prob=0.5, spatial_axes=(0, 1)),
                     mtf.RandRotate90(prob=0.5, spatial_axes=(1, 2)),
-                    mtf.RandFlip(prob=0.10, spatial_axis=0),
-                    mtf.RandFlip(prob=0.10, spatial_axis=1),
-                    mtf.RandFlip(prob=0.10, spatial_axis=2),
-                    mtf.RandScaleIntensity(factors=0.1, prob=0.5),
-                    mtf.RandShiftIntensity(offsets=0.1, prob=0.5),
-                    mtf.ToTensor(dtype=torch.float),
+                    mtf.RandRotate90(prob=0.5, spatial_axes=(0, 2)),
+                    mtf.ToTensor(dtype=torch.float32),
                 ])
             else:
                 self.transform = mtf.Compose([
-                    mtf.ToTensor(dtype=torch.float),
+                    mtf.AddChannel(),
+                    mtf.Orientation(axcodes="RAS"),
+                    mtf.Spacing(pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
+                    mtf.ScaleIntensityRange(a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
+                    mtf.CropForeground(),
+                    mtf.CenterSpatialCrop(roi_size=(self.img_size, self.img_size, self.img_size)),
+                    mtf.ToTensor(dtype=torch.float32),
                 ])
 
     def __len__(self):
@@ -91,7 +121,10 @@ class AuxVisionDataset(Dataset):
 
     def __getitem__(self, idx):
         data = self.samples[idx]
-        img_file = data["img_files"][0]  # Take first image file
+        
+        # Select best filter
+        best_idx = self.best_filter_index(data["filters"])
+        img_file = data["img_files"][best_idx]
         target = data["target"]
 
         # Load npy file
@@ -105,24 +138,33 @@ class AuxVisionDataset(Dataset):
             "target": target,
         }
 
+    def best_filter_index(self, filters) -> int:
+        """Select best filter based on kernel priority."""
+        if not filters:
+            return 0
+        priorities = [self._priority(f.get("kernel", "")) for f in filters]
+        return int(np.argmin(priorities))
+    
+    def _priority(self, kernel) -> int:
+        """Return priority of kernel (lower = better)."""
+        for priority, pattern in _RULES:
+            if pattern.search(kernel):
+                return priority
+        return 9
+
 
 class CTViTCancerClassifier(nn.Module):
     def __init__(
         self,
         ctvit_model: nn.Module,
-        use_cls=True,
         hidden_dim=768
     ):
         super().__init__()
         self.ctvit = ctvit_model
-        self.use_cls = use_cls
         self.hidden_dim = hidden_dim
         
-        if self.use_cls:
-            self.cancer_head = nn.Linear(self.hidden_dim, 1)
-        else:
-            # Assuming patch tokens, need to adjust based on actual output
-            self.cancer_head = nn.Linear(self.hidden_dim * 2048, 1)
+        # Single linear layer - we'll use global average pooling
+        self.cancer_head = nn.Linear(self.hidden_dim, 1)
 
     def forward(self, image):
         B = image.size(0)
@@ -130,25 +172,19 @@ class CTViTCancerClassifier(nn.Module):
         # Extract features from CTViT
         with torch.no_grad():
             feats = self.ctvit.forward_encoder(image, mask_ratio=0.0)
+            # feats shape: [B, num_patches, hidden_dim]
 
-        if self.use_cls:
-            # Use CLS token (first token)
-            cls_feats = feats[:, 0]
-            cls_feats = cls_feats.view(B, self.hidden_dim)
-            mdl_feats = cls_feats
-        else:
-            # Use all patch tokens
-            non_cls_feats = feats.view(B, -1)
-            mdl_feats = non_cls_feats
+        # Global average pooling across all patch tokens
+        mdl_feats = feats.mean(dim=1)  # [B, hidden_dim]
 
-        logits = self.cancer_head(mdl_feats).view(B, 1)
+        logits = self.cancer_head(mdl_feats)  # [B, 1]
         return logits
 
 
 @dataclass
 class TrainingArguments:
     model_path: str = field(
-        default="./ckpt/M3FM.pth",
+        default="./demo_data/model_cancer_risk.pth",
         metadata={"help": "Path to the pretrained M3FM checkpoint."}
     )
     freeze_ctvit: bool = field(
@@ -175,9 +211,9 @@ class TrainingArguments:
     output_dir: str = field(default="./cancer_aux_output", metadata={"help": "Output directory."})
     device: str = field(default="cuda", metadata={"help": "Device to use."})
     tag: str = field(default="", metadata={"help": "Additional tag for output directory."})
-    use_cls: bool = field(default=True, metadata={"help": "Use CLS token for classification."})
     use_weighted_loss: bool = field(default=False, metadata={"help": "Use weighted BCE loss."})
     pos_weight: float = field(default=None, metadata={"help": "Positive class weight."})
+    img_size: int = field(default=96, metadata={"help": "Image size for cropping."})
 
 
 def evaluate(loader, model, device):
@@ -230,7 +266,7 @@ def main():
     parser = HfArgumentParser(TrainingArguments)
     (args,) = parser.parse_args_into_dataclasses()
 
-    output_dir = args.output_dir + f"_freeze_{args.freeze_ctvit}_epochs_{args.num_epochs}_use_cls_{args.use_cls}_weighted_{args.use_weighted_loss}" + args.tag
+    output_dir = args.output_dir + f"_freeze_{args.freeze_ctvit}_epochs_{args.num_epochs}_weighted_{args.use_weighted_loss}" + args.tag
     os.makedirs(output_dir, exist_ok=True)
     
     logger = setup_logger(
@@ -242,34 +278,37 @@ def main():
 
     # Load M3FM model
     logger.info(f"Loading M3FM model from {args.model_path}")
-    model_ctvit = M3FM()
+    model_full = M3FM()
     checkpoint = torch.load(args.model_path, map_location='cpu')
     
-    # Interpolate position embeddings if needed
-    interpolate_pos_embed(model_ctvit, checkpoint['model'])
-    
-    # Load checkpoint
-    msg = model_ctvit.load_state_dict(checkpoint['model'], strict=False)
+    # Load checkpoint directly (matching inference_demo.py)
+    msg = model_full.load_state_dict(checkpoint['model'], strict=False)
     logger.info(f"Loaded checkpoint with message: {msg}")
     
+    # Extract just the CT encoder from the full M3FM model
+    model_ctvit = model_full.ct_encoder
     model_ctvit = model_ctvit.to(device)
 
     # Freeze CTViT if requested
     if args.freeze_ctvit:
         for param in model_ctvit.parameters():
             param.requires_grad = False
-        logger.info("CTViT is frozen.")
+        logger.info("CTViT encoder is frozen.")
 
     # Build cancer classifier
     model = CTViTCancerClassifier(
-        ctvit_model=model_ctvit,
-        use_cls=args.use_cls
+        ctvit_model=model_ctvit
     ).to(device)
 
-    # Build datasets
-    train_dataset = AuxVisionDataset(args.train_json, mode="train")
-    val_dataset = AuxVisionDataset(args.val_json, mode="val")
-    test_dataset = AuxVisionDataset(args.test_json, mode="test")
+    # Build cancer classifier
+    model = CTViTCancerClassifier(
+        ctvit_model=model_ctvit
+    ).to(device)
+
+    # Build datasets with M3FM transforms
+    train_dataset = AuxVisionDataset(args.train_json, mode="train", img_size=args.img_size)
+    val_dataset = AuxVisionDataset(args.val_json, mode="val", img_size=args.img_size)
+    test_dataset = AuxVisionDataset(args.test_json, mode="test", img_size=args.img_size)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True)
