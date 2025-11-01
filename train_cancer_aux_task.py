@@ -158,11 +158,11 @@ class AuxVisionDataset(Dataset):
 class CTViTCancerClassifier(nn.Module):
     def __init__(
         self,
-        ctvit_model: nn.Module,
+        m3fm_model: nn.Module,
         hidden_dim=768
     ):
         super().__init__()
-        self.ctvit = ctvit_model
+        self.m3fm_model = m3fm_model
         self.hidden_dim = hidden_dim
         
         # Single linear layer - we'll use global average pooling
@@ -171,10 +171,25 @@ class CTViTCancerClassifier(nn.Module):
     def forward(self, image):
         B = image.size(0)
 
-        # Extract features from CTViT
+        # First tokenize the image (like in M3FM.pred_embeds)
         with torch.no_grad():
-            feats = self.ctvit.forward_encoder(image, mask_ratio=0.0)
-            # feats shape: [B, num_patches, hidden_dim]
+            img_embeds = self.m3fm_model.img_tokenizer(image)
+            
+            # Get the input size for this image
+            ims = (image.shape[2], image.shape[3], image.shape[4])
+            input_size = self.m3fm_model.img_tokenizer.__getattr__('tokenizer_{}'.format(ims)).input_size
+            
+            # Pass through encoder_img with the same arguments as in M3FM.pred_embeds (lines 212-220)
+            feats = self.m3fm_model.encoder_img(
+                img_embeds,
+                window_size=self.m3fm_model.window_size,
+                window_block_indexes=self.m3fm_model.window_block_indexes,
+                spatial_size=input_size,
+                cls_embed=self.m3fm_model.cls_embed_img,
+                attention_mask=None,  # No attention mask for simple inference
+                drop_path=0.0,  # No dropout during inference
+                drop=0.0
+            )
 
         # Global average pooling across all patch tokens
         mdl_feats = feats.mean(dim=1)  # [B, hidden_dim]
@@ -299,19 +314,19 @@ def main():
     state_dict = torch.load(args.model_path, map_location='cpu')
     msg = model_full.load_state_dict(state_dict, strict=False)
     logger.info(f"Loaded checkpoint with message: {msg}")
-    
-    # Extract just the CT encoder from the full M3FM model
-    model_ctvit = model_full.ct_encoder
 
-    # Freeze CTViT if requested
+    # Freeze M3FM components if requested (img_tokenizer and encoder_img)
     if args.freeze_ctvit:
-        for param in model_ctvit.parameters():
+        for param in model_full.img_tokenizer.parameters():
             param.requires_grad = False
-        logger.info("CTViT encoder is frozen.")
+        for param in model_full.encoder_img.parameters():
+            param.requires_grad = False
+        logger.info("M3FM image tokenizer and encoder are frozen.")
 
-    # Build cancer classifier
+    # Build cancer classifier - pass the full model so we can access tokenizer and encoder
     model = CTViTCancerClassifier(
-        ctvit_model=model_ctvit
+        m3fm_model=model_full,
+        hidden_dim=model_full.embed_dim_img
     ).cuda(args.gpu)
 
     # Build datasets with M3FM transforms
