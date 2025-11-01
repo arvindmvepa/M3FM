@@ -89,33 +89,35 @@ class AuxVisionDataset(Dataset):
                 "target": datum_dict["numeric_answer"]
             })
 
-        # M3FM-style transforms matching data.py
+        # M3FM-style transforms matching data.py (dictionary-based)
         if self.transform is None:
             if mode == "train":
                 self.transform = mtf.Compose([
-                    mtf.AddChannel(),
-                    mtf.Orientation(axcodes="RAS"),
-                    mtf.Spacing(pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
-                    mtf.ScaleIntensityRange(a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
-                    mtf.CropForeground(),
-                    mtf.RandSpatialCrop(roi_size=(self.img_size, self.img_size, self.img_size), random_size=False),
-                    mtf.RandFlip(prob=0.5, spatial_axis=0),
-                    mtf.RandFlip(prob=0.5, spatial_axis=1),
-                    mtf.RandFlip(prob=0.5, spatial_axis=2),
-                    mtf.RandRotate90(prob=0.5, spatial_axes=(0, 1)),
-                    mtf.RandRotate90(prob=0.5, spatial_axes=(1, 2)),
-                    mtf.RandRotate90(prob=0.5, spatial_axes=(0, 2)),
-                    mtf.ToTensor(dtype=torch.float32),
+                    mtf.LoadImaged(keys=["image"]),
+                    mtf.AddChanneld(keys=["image"]),
+                    mtf.Orientationd(keys=["image"], axcodes="RAS"),
+                    mtf.Spacingd(keys=["image"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
+                    mtf.ScaleIntensityRanged(keys=["image"], a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
+                    mtf.CropForegroundd(keys=["image"], source_key="image"),
+                    mtf.RandSpatialCropd(keys=["image"], roi_size=(self.img_size, self.img_size, self.img_size), random_size=False),
+                    mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=0),
+                    mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=1),
+                    mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=2),
+                    mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(0, 1)),
+                    mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(1, 2)),
+                    mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(0, 2)),
+                    mtf.ToTensord(keys=["image"]),
                 ])
             else:
                 self.transform = mtf.Compose([
-                    mtf.AddChannel(),
-                    mtf.Orientation(axcodes="RAS"),
-                    mtf.Spacing(pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
-                    mtf.ScaleIntensityRange(a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
-                    mtf.CropForeground(),
-                    mtf.CenterSpatialCrop(roi_size=(self.img_size, self.img_size, self.img_size)),
-                    mtf.ToTensor(dtype=torch.float32),
+                    mtf.LoadImaged(keys=["image"]),
+                    mtf.AddChanneld(keys=["image"]),
+                    mtf.Orientationd(keys=["image"], axcodes="RAS"),
+                    mtf.Spacingd(keys=["image"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
+                    mtf.ScaleIntensityRanged(keys=["image"], a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
+                    mtf.CropForegroundd(keys=["image"], source_key="image"),
+                    mtf.CenterSpatialCropd(keys=["image"], roi_size=(self.img_size, self.img_size, self.img_size)),
+                    mtf.ToTensord(keys=["image"]),
                 ])
 
     def __len__(self):
@@ -129,14 +131,14 @@ class AuxVisionDataset(Dataset):
         img_file = data["img_files"][best_idx]
         target = data["target"]
 
-        # Load npy file
-        img_npy = np.load(img_file)
+        # Create dictionary for MONAI transforms (matching data.py)
+        data_dict = {"image": img_file}
 
         if self.transform is not None:
-            img_tensor = self.transform(img_npy)
+            data_dict = self.transform(data_dict)
 
         return {
-            "image": img_tensor,
+            "image": data_dict["image"],
             "target": target,
         }
 
@@ -171,15 +173,16 @@ class CTViTCancerClassifier(nn.Module):
     def forward(self, image):
         B = image.size(0)
 
-        # First tokenize the image (like in M3FM.pred_embeds)
+        # First tokenize the image (like in M3FM.pred_embeds line 240)
         with torch.no_grad():
+            # Store image shape in self.ims like in m3fm.py line 240
+            self.m3fm_model.ims = (image.shape[2], image.shape[3], image.shape[4])
             img_embeds = self.m3fm_model.img_tokenizer(image)
             
-            # Get the input size for this image
-            ims = (image.shape[2], image.shape[3], image.shape[4])
-            input_size = self.m3fm_model.img_tokenizer.__getattr__('tokenizer_{}'.format(ims)).input_size
+            # Get the input size for this image (line 253)
+            input_size = self.m3fm_model.img_tokenizer.__getattr__('tokenizer_{}'.format(self.m3fm_model.ims)).input_size
             
-            # Pass through encoder_img with the same arguments as in M3FM.pred_embeds (lines 212-220)
+            # Pass through encoder_img with the same arguments as in M3FM.pred_embeds (lines 255-261)
             feats = self.m3fm_model.encoder_img(
                 img_embeds,
                 window_size=self.m3fm_model.window_size,
@@ -314,6 +317,10 @@ def main():
     state_dict = torch.load(args.model_path, map_location='cpu')
     msg = model_full.load_state_dict(state_dict, strict=False)
     logger.info(f"Loaded checkpoint with message: {msg}")
+    
+    # Get embed_dim_img from the loaded model (line 76 in m3fm.py)
+    embed_dim_img = model_full.embed_dim_img
+    logger.info(f"Using embed_dim_img={embed_dim_img} from M3FM model")
 
     # Freeze M3FM components if requested (img_tokenizer and encoder_img)
     if args.freeze_ctvit:
@@ -326,7 +333,7 @@ def main():
     # Build cancer classifier - pass the full model so we can access tokenizer and encoder
     model = CTViTCancerClassifier(
         m3fm_model=model_full,
-        hidden_dim=model_full.embed_dim_img
+        hidden_dim=embed_dim_img  # Use the model's embed_dim_img
     ).cuda(args.gpu)
 
     # Build datasets with M3FM transforms
