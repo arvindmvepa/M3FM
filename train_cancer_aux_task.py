@@ -89,36 +89,69 @@ class AuxVisionDataset(Dataset):
                 "target": datum_dict["numeric_answer"]
             })
 
-        # M3FM-style transforms matching data.py (dictionary-based)
+        # M3FM-style transforms - try different MONAI versions
         if self.transform is None:
             if mode == "train":
-                self.transform = mtf.Compose([
-                    mtf.LoadImaged(keys=["image"]),
-                    mtf.AddChanneld(keys=["image"]),
-                    mtf.Orientationd(keys=["image"], axcodes="RAS"),
-                    mtf.Spacingd(keys=["image"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
-                    mtf.ScaleIntensityRanged(keys=["image"], a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
-                    mtf.CropForegroundd(keys=["image"], source_key="image"),
-                    mtf.RandSpatialCropd(keys=["image"], roi_size=(self.img_size, self.img_size, self.img_size), random_size=False),
-                    mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=0),
-                    mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=1),
-                    mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=2),
-                    mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(0, 1)),
-                    mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(1, 2)),
-                    mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(0, 2)),
-                    mtf.ToTensord(keys=["image"]),
-                ])
+                # Try EnsureChannelFirstd if AddChanneld doesn't exist
+                try:
+                    self.transform = mtf.Compose([
+                        mtf.LoadImaged(keys=["image"]),
+                        mtf.AddChanneld(keys=["image"]),
+                        mtf.Orientationd(keys=["image"], axcodes="RAS"),
+                        mtf.Spacingd(keys=["image"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
+                        mtf.ScaleIntensityRanged(keys=["image"], a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
+                        mtf.CropForegroundd(keys=["image"], source_key="image"),
+                        mtf.RandSpatialCropd(keys=["image"], roi_size=(self.img_size, self.img_size, self.img_size), random_size=False),
+                        mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=0),
+                        mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=1),
+                        mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=2),
+                        mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(0, 1)),
+                        mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(1, 2)),
+                        mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(0, 2)),
+                        mtf.ToTensord(keys=["image"]),
+                    ])
+                except AttributeError:
+                    # Fallback to EnsureChannelFirstd for newer MONAI versions
+                    self.transform = mtf.Compose([
+                        mtf.LoadImaged(keys=["image"]),
+                        mtf.EnsureChannelFirstd(keys=["image"]),
+                        mtf.Orientationd(keys=["image"], axcodes="RAS"),
+                        mtf.Spacingd(keys=["image"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
+                        mtf.ScaleIntensityRanged(keys=["image"], a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
+                        mtf.CropForegroundd(keys=["image"], source_key="image"),
+                        mtf.RandSpatialCropd(keys=["image"], roi_size=(self.img_size, self.img_size, self.img_size), random_size=False),
+                        mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=0),
+                        mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=1),
+                        mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=2),
+                        mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(0, 1)),
+                        mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(1, 2)),
+                        mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(0, 2)),
+                        mtf.ToTensord(keys=["image"]),
+                    ])
             else:
-                self.transform = mtf.Compose([
-                    mtf.LoadImaged(keys=["image"]),
-                    mtf.AddChanneld(keys=["image"]),
-                    mtf.Orientationd(keys=["image"], axcodes="RAS"),
-                    mtf.Spacingd(keys=["image"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
-                    mtf.ScaleIntensityRanged(keys=["image"], a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
-                    mtf.CropForegroundd(keys=["image"], source_key="image"),
-                    mtf.CenterSpatialCropd(keys=["image"], roi_size=(self.img_size, self.img_size, self.img_size)),
-                    mtf.ToTensord(keys=["image"]),
-                ])
+                try:
+                    self.transform = mtf.Compose([
+                        mtf.LoadImaged(keys=["image"]),
+                        mtf.AddChanneld(keys=["image"]),
+                        mtf.Orientationd(keys=["image"], axcodes="RAS"),
+                        mtf.Spacingd(keys=["image"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
+                        mtf.ScaleIntensityRanged(keys=["image"], a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
+                        mtf.CropForegroundd(keys=["image"], source_key="image"),
+                        mtf.CenterSpatialCropd(keys=["image"], roi_size=(self.img_size, self.img_size, self.img_size)),
+                        mtf.ToTensord(keys=["image"]),
+                    ])
+                except AttributeError:
+                    # Fallback to EnsureChannelFirstd for newer MONAI versions
+                    self.transform = mtf.Compose([
+                        mtf.LoadImaged(keys=["image"]),
+                        mtf.EnsureChannelFirstd(keys=["image"]),
+                        mtf.Orientationd(keys=["image"], axcodes="RAS"),
+                        mtf.Spacingd(keys=["image"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
+                        mtf.ScaleIntensityRanged(keys=["image"], a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
+                        mtf.CropForegroundd(keys=["image"], source_key="image"),
+                        mtf.CenterSpatialCropd(keys=["image"], roi_size=(self.img_size, self.img_size, self.img_size)),
+                        mtf.ToTensord(keys=["image"]),
+                    ])
 
     def __len__(self):
         return len(self.samples)
@@ -341,9 +374,9 @@ def main():
     val_dataset = AuxVisionDataset(args.val_json, mode="val", img_size=args.img_size)
     test_dataset = AuxVisionDataset(args.test_json, mode="test", img_size=args.img_size)
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True, num_workers=4)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True, num_workers=4)
 
     logger.info(f"Dataset sizes => train={len(train_dataset)}, val={len(val_dataset)}, test={len(test_dataset)}")
 
