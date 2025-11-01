@@ -217,24 +217,26 @@ class CTViTCancerClassifier(nn.Module):
     def forward(self, image):
         B = image.size(0)
 
-        # First tokenize the image (like in M3FM.pred_embeds line 240)
+        # Use the exact same approach as in M3FM.pred_embeds
         with torch.no_grad():
-            # Store image shape in self.ims like in m3fm.py line 240
+            # Set image dimensions (line 240 in m3fm.py)
             self.m3fm_model.ims = (image.shape[2], image.shape[3], image.shape[4])
+            
+            # Tokenize image (line 241 in m3fm.py)
             img_embeds = self.m3fm_model.img_tokenizer(image)
             
-            # Get the input size for this image (line 253)
-            input_size = self.m3fm_model.img_tokenizer.__getattr__('tokenizer_{}'.format(self.m3fm_model.ims)).input_size
+            # Get input_size from the tokenizer's get_input_size method (lines 252-254 in m3fm.py)
+            input_size = self.m3fm_model.img_tokenizer.get_input_size(self.m3fm_model.ims)
             
-            # Pass through encoder_img with the same arguments as in M3FM.pred_embeds (lines 255-261)
+            # Pass through encoder_img (lines 255-261 in m3fm.py)
             feats = self.m3fm_model.encoder_img(
                 img_embeds,
                 window_size=self.m3fm_model.window_size,
                 window_block_indexes=self.m3fm_model.window_block_indexes,
                 spatial_size=input_size,
                 cls_embed=self.m3fm_model.cls_embed_img,
-                attention_mask=None,  # No attention mask for simple inference
-                drop_path=0.0,  # No dropout during inference
+                attention_mask=None,
+                drop_path=0.0,
                 drop=0.0
             )
 
