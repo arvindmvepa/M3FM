@@ -217,18 +217,22 @@ class CTViTCancerClassifier(nn.Module):
     def forward(self, image):
         B = image.size(0)
 
-        # Use the exact same approach as in M3FM.pred_embeds
+        # Copy the exact approach from M3FM.pred_embeds (lines 240-261)
         with torch.no_grad():
-            # Set image dimensions (line 240 in m3fm.py)
+            # Line 240: self.ims = (imgs.shape[2], imgs.shape[3], imgs.shape[4])
             self.m3fm_model.ims = (image.shape[2], image.shape[3], image.shape[4])
             
-            # Tokenize image (line 241 in m3fm.py)
+            # Line 241: img_embeds = self.img_tokenizer(imgs)
             img_embeds = self.m3fm_model.img_tokenizer(image)
             
-            # Get input_size from the tokenizer's get_input_size method (lines 252-254 in m3fm.py)
-            input_size = self.m3fm_model.img_tokenizer.get_input_size(self.m3fm_model.ims)
+            # Lines 252-254: Get input_size exactly as in the original code
+            # if 'data' not in data_dict.keys():
+            #     input_size = self.img_tokenizer.__getattr__('tokenizer_{}'.format(self.ims)).input_size
+            # else:
+            #     input_size = self.img_tokenizer.__getattr__('tokenizer_{}'.format(self.ims)).input_size
+            input_size = self.m3fm_model.img_tokenizer.__getattr__('tokenizer_{}'.format(self.m3fm_model.ims)).input_size
             
-            # Pass through encoder_img (lines 255-261 in m3fm.py)
+            # Lines 255-261: Pass through encoder_img
             feats = self.m3fm_model.encoder_img(
                 img_embeds,
                 window_size=self.m3fm_model.window_size,
