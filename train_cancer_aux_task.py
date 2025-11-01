@@ -20,6 +20,7 @@ from sklearn.metrics import roc_auc_score, accuracy_score, f1_score, precision_s
 
 # Import from M3FM
 from models.m3fm import M3FM
+from util import load_config
 
 
 # Add filter selection rules
@@ -84,6 +85,7 @@ class AuxVisionDataset(Dataset):
         for datum_dict in self.data_list:
             self.samples.append({
                 "img_files": datum_dict["img_files"],
+                "filters": datum_dict.get("filters", []),
                 "target": datum_dict["numeric_answer"]
             })
 
@@ -187,6 +189,10 @@ class TrainingArguments:
         default="./demo_data/model_cancer_risk.pth",
         metadata={"help": "Path to the pretrained M3FM checkpoint."}
     )
+    config_path: str = field(
+        default="./config_files/config_m3mf_cancer_risk.py",
+        metadata={"help": "Path to the M3FM config file."}
+    )
     freeze_ctvit: bool = field(
         default=True,
         metadata={"help": "Whether to freeze CTViT weights."}
@@ -276,12 +282,15 @@ def main():
     
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
-    # Load M3FM model
+    # Load config and M3FM model
+    logger.info(f"Loading config from {args.config_path}")
+    config = load_config(args.config_path)
+    
     logger.info(f"Loading M3FM model from {args.model_path}")
-    model_full = M3FM()
+    model_full = M3FM(**config.model)
     checkpoint = torch.load(args.model_path, map_location='cpu')
     
-    # Load checkpoint directly (matching inference_demo.py)
+    # Load checkpoint
     msg = model_full.load_state_dict(checkpoint['model'], strict=False)
     logger.info(f"Loaded checkpoint with message: {msg}")
     
@@ -294,11 +303,6 @@ def main():
         for param in model_ctvit.parameters():
             param.requires_grad = False
         logger.info("CTViT encoder is frozen.")
-
-    # Build cancer classifier
-    model = CTViTCancerClassifier(
-        ctvit_model=model_ctvit
-    ).to(device)
 
     # Build cancer classifier
     model = CTViTCancerClassifier(
