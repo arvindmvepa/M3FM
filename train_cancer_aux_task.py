@@ -19,8 +19,8 @@ import monai.transforms as mtf
 from sklearn.metrics import roc_auc_score, accuracy_score, f1_score, precision_score, recall_score
 
 # Import from M3FM
-from models.m3fm import M3FM
-from util import load_config
+import models.m3fm as m3fm
+from util import ConfigFile
 
 
 # Add filter selection rules
@@ -216,6 +216,7 @@ class TrainingArguments:
     learning_rate: float = field(default=1e-4, metadata={"help": "Learning rate."})
     output_dir: str = field(default="./cancer_aux_output", metadata={"help": "Output directory."})
     device: str = field(default="cuda", metadata={"help": "Device to use."})
+    gpu: int = field(default=0, metadata={"help": "GPU ID to use."})
     tag: str = field(default="", metadata={"help": "Additional tag for output directory."})
     use_weighted_loss: bool = field(default=False, metadata={"help": "Use weighted BCE loss."})
     pos_weight: float = field(default=None, metadata={"help": "Positive class weight."})
@@ -282,21 +283,25 @@ def main():
     
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
-    # Load config and M3FM model
+    # Load config using ConfigFile (matching inference.py)
     logger.info(f"Loading config from {args.config_path}")
-    config = load_config(args.config_path)
+    config_args = ConfigFile(args.config_path)
     
+    # Create model using the config (matching inference.py)
+    torch.backends.cudnn.benchmark = True
+    config_args.modalities = list(config_args.modalities.split(","))
     logger.info(f"Loading M3FM model from {args.model_path}")
-    model_full = M3FM(**config.model)
-    checkpoint = torch.load(args.model_path, map_location='cpu')
     
-    # Load checkpoint
-    msg = model_full.load_state_dict(checkpoint['model'], strict=False)
+    model_full = m3fm.__dict__[config_args.model](**vars(config_args))
+    model_full.cuda(args.gpu)
+    
+    # Load checkpoint (matching inference.py)
+    state_dict = torch.load(args.model_path, map_location='cpu')
+    msg = model_full.load_state_dict(state_dict, strict=False)
     logger.info(f"Loaded checkpoint with message: {msg}")
     
     # Extract just the CT encoder from the full M3FM model
     model_ctvit = model_full.ct_encoder
-    model_ctvit = model_ctvit.to(device)
 
     # Freeze CTViT if requested
     if args.freeze_ctvit:
@@ -307,7 +312,7 @@ def main():
     # Build cancer classifier
     model = CTViTCancerClassifier(
         ctvit_model=model_ctvit
-    ).to(device)
+    ).cuda(args.gpu)
 
     # Build datasets with M3FM transforms
     train_dataset = AuxVisionDataset(args.train_json, mode="train", img_size=args.img_size)
@@ -324,7 +329,7 @@ def main():
     pos_weight = None
     if args.use_weighted_loss:
         assert args.pos_weight is not None, "use_weighted_loss=True but no pos_weight specified."
-        pos_weight = torch.tensor(args.pos_weight).to(device)
+        pos_weight = torch.tensor(args.pos_weight).cuda(args.gpu)
         logger.info(f"Using pos_weight: {pos_weight.item():.3f}")
 
     optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=args.learning_rate)
@@ -337,8 +342,8 @@ def main():
         total_loss = 0.0
 
         for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1} [Train]"):
-            image = batch["image"].to(device)
-            targets = batch['target'].to(device)
+            image = batch["image"].cuda(args.gpu)
+            targets = batch['target'].cuda(args.gpu)
 
             optimizer.zero_grad()
             logits = model(image)
@@ -358,8 +363,8 @@ def main():
 
         with torch.no_grad():
             for batch in tqdm(val_loader, desc=f"Epoch {epoch + 1} [Val]"):
-                image = batch["image"].to(device)
-                targets = batch["target"].to(device)
+                image = batch["image"].cuda(args.gpu)
+                targets = batch["target"].cuda(args.gpu)
 
                 logits = model(image)
                 v_loss = compute_aux_loss(logits, targets, pos_weight=pos_weight)
@@ -367,7 +372,7 @@ def main():
                 val_total_loss += v_loss.item()
 
         avg_val_loss = val_total_loss / len(val_loader)
-        val_metrics = evaluate(val_loader, model, device)
+        val_metrics = evaluate(val_loader, model, torch.device(f'cuda:{args.gpu}'))
 
         logger.info(f"[Epoch {epoch + 1}] Val loss = {avg_val_loss:.5f} " +
                     " ".join([f"{k}={v:.4f}" for k, v in val_metrics.items()]))
@@ -380,15 +385,15 @@ def main():
 
     # Test evaluation
     logger.info("========== TEST ==========")
-    model.load_state_dict(torch.load(best_model_path, map_location=device))
+    model.load_state_dict(torch.load(best_model_path, map_location=f'cuda:{args.gpu}'))
     model.eval()
 
     test_total_loss = 0.0
 
     with torch.no_grad():
         for batch in tqdm(test_loader, desc="[Test]"):
-            image = batch["image"].to(device)
-            targets = batch["target"].to(device)
+            image = batch["image"].cuda(args.gpu)
+            targets = batch["target"].cuda(args.gpu)
 
             logits = model(image)
             t_loss = compute_aux_loss(logits, targets, pos_weight=pos_weight)
@@ -396,7 +401,7 @@ def main():
             test_total_loss += t_loss.item()
 
     avg_test_loss = test_total_loss / len(test_loader)
-    test_metrics = evaluate(test_loader, model, device)
+    test_metrics = evaluate(test_loader, model, torch.device(f'cuda:{args.gpu}'))
 
     logger.info(f"Best-val model Test loss = {avg_test_loss:.5f} " +
                 " ".join([f"{k}={v:.4f}" for k, v in test_metrics.items()]))
