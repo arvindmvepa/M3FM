@@ -179,7 +179,18 @@ class AuxVisionDataset(Dataset):
         """Select best filter based on kernel priority."""
         if not filters:
             return 0
-        priorities = [self._priority(f.get("kernel", "")) for f in filters]
+        
+        # Handle both dict and string cases
+        priorities = []
+        for f in filters:
+            if isinstance(f, dict):
+                kernel = f.get("kernel", "")
+            elif isinstance(f, str):
+                kernel = f
+            else:
+                kernel = ""
+            priorities.append(self._priority(kernel))
+        
         return int(np.argmin(priorities))
     
     def _priority(self, kernel) -> int:
