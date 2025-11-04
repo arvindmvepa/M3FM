@@ -493,6 +493,7 @@ def main():
             optimizer.step()
 
             total_loss += loss.item()
+            break
 
         avg_train_loss = total_loss / len(train_loader)
         logger.info(f"[Epoch {epoch + 1}] Train loss = {avg_train_loss:.5f}")
@@ -510,6 +511,7 @@ def main():
                 v_loss = compute_aux_loss(logits, targets, pos_weight=pos_weight)
 
                 val_total_loss += v_loss.item()
+                break
 
         avg_val_loss = val_total_loss / len(val_loader)
         val_metrics = evaluate(val_loader, model, torch.device(f'cuda:{args.gpu}'))
@@ -522,6 +524,7 @@ def main():
             best_val_loss = avg_val_loss
             torch.save(model.state_dict(), best_model_path)
             logger.info(f"  ➜ New best model saved ({best_val_loss:.5f})")
+        break
 
     # Test evaluation
     logger.info("========== TEST ==========")
