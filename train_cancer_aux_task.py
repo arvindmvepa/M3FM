@@ -180,7 +180,7 @@ def get_data_center_crop(input_dict, args):
     return data_dict
 
 
-def get_npy_path(volume_path, img_root="/hsuraid/avepa/nlst_npy"):
+def get_npy_path(volume_path, img_root="/hsuraid/avepa/nlst_npy_v1"):
     volume_name = os.path.basename(volume_path)
     time_point_dir = os.path.basename(os.path.dirname(volume_path))
     pid_dir = os.path.basename(os.path.dirname(os.path.dirname(volume_path)))
@@ -189,7 +189,7 @@ def get_npy_path(volume_path, img_root="/hsuraid/avepa/nlst_npy"):
 
 
 class AuxVisionDataset(Dataset):
-    def __init__(self, json_path, mode="train", config_args=None, img_root="/hsuraid/avepa/nlst_npy"):
+    def __init__(self, json_path, mode="train", config_args=None, img_root="/hsuraid/avepa/nlst_npy_v1"):
         super().__init__()
         self.mode = mode
         self.config_args = config_args
@@ -325,20 +325,20 @@ class TrainingArguments:
     
     # Add img_root as an argument
     img_root: str = field(
-        default="/hsuraid/avepa/nlst_npy",
+        default="/hsuraid/avepa/nlst_npy_v1",
         metadata={"help": "Root directory for .npy files."}
     )
     
     train_json: str = field(
-        default="/home/avepa/MedTrinity-25M/nlst_aux_cancer_train_v6.json",
+        default="/home/avepa/MedTrinity-25M/nlst_aux_cancer_train_v7.json",
         metadata={"help": "Path to training JSON file."}
     )
     val_json: str = field(
-        default="/home/avepa/MedTrinity-25M/nlst_aux_cancer_val_v6.json",
+        default="/home/avepa/MedTrinity-25M/nlst_aux_cancer_val_v7.json",
         metadata={"help": "Path to validation JSON file."}
     )
     test_json: str = field(
-        default="/home/avepa/MedTrinity-25M/nlst_aux_cancer_test_v6.json",
+        default="/home/avepa/MedTrinity-25M/nlst_aux_cancer_test_v7.json",
         metadata={"help": "Path to test JSON file."}
     )
     
