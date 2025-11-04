@@ -179,11 +179,21 @@ def get_data_center_crop(input_dict, args):
 
     return data_dict
 
+
+def get_npy_path(volume_path, img_root="/hsuraid/avepa/nlst_npy"):
+    volume_name = os.path.basename(volume_path)
+    time_point_dir = os.path.basename(os.path.dirname(volume_path))
+    pid_dir = os.path.basename(os.path.dirname(os.path.dirname(volume_path)))
+    volume_path_npy = os.path.join(img_root, pid_dir, time_point_dir, volume_name + ".npy")
+    return volume_path_npy
+
+
 class AuxVisionDataset(Dataset):
-    def __init__(self, json_path, mode="train", config_args=None):
+    def __init__(self, json_path, mode="train", config_args=None, img_root="/hsuraid/avepa/nlst_npy"):
         super().__init__()
         self.mode = mode
         self.config_args = config_args
+        self.img_root = img_root  # Store img_root as instance variable
 
         with open(json_path, "r") as f:
             self.data_list = json.load(f)
@@ -209,7 +219,7 @@ class AuxVisionDataset(Dataset):
 
         # Create input dict for center crop preprocessing (no pixel_size or coords needed)
         input_dict = {
-            'ct_path': img_file,
+            'ct_path': get_npy_path(img_file, self.img_root),  # Use instance variable
             'question': 'Predict cancer risk',
             'clinical_txt': '',  # Empty since we're not using clinical text for this task
         }
@@ -269,7 +279,7 @@ class CTViTCancerClassifier(nn.Module):
             # Line 240: self.ims = (imgs.shape[2], imgs.shape[3], imgs.shape[4])
             self.m3fm_model.ims = (image.shape[2], image.shape[3], image.shape[4])
             
-            # Line 241: img_embeds = self.img_tokenizer(imgs)
+            # Line 241: img_embeds = self.m3fm_model.img_tokenizer(imgs)
             img_embeds = self.m3fm_model.img_tokenizer(image)
             
             # Lines 252-254: Get input_size exactly as in the original code
@@ -311,6 +321,12 @@ class TrainingArguments:
     freeze_ctvit: bool = field(
         default=True,
         metadata={"help": "Whether to freeze CTViT weights."}
+    )
+    
+    # Add img_root as an argument
+    img_root: str = field(
+        default="/hsuraid/avepa/nlst_npy",
+        metadata={"help": "Root directory for .npy files."}
     )
     
     train_json: str = field(
@@ -437,10 +453,10 @@ def main():
         hidden_dim=embed_dim_img  # Use the model's embed_dim_img
     ).cuda(args.gpu)
 
-    # Build datasets using M3FM's get_data function
-    train_dataset = AuxVisionDataset(args.train_json, mode="train", config_args=config_args)
-    val_dataset = AuxVisionDataset(args.val_json, mode="val", config_args=config_args)
-    test_dataset = AuxVisionDataset(args.test_json, mode="test", config_args=config_args)
+    # Build datasets using M3FM's get_data function - pass img_root
+    train_dataset = AuxVisionDataset(args.train_json, mode="train", config_args=config_args, img_root=args.img_root)
+    val_dataset = AuxVisionDataset(args.val_json, mode="val", config_args=config_args, img_root=args.img_root)
+    test_dataset = AuxVisionDataset(args.test_json, mode="test", config_args=config_args, img_root=args.img_root)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True, num_workers=4)
