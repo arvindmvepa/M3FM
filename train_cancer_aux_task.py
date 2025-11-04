@@ -109,7 +109,7 @@ class AuxVisionDataset(Dataset):
         }
         
         # Apply M3FM preprocessing
-        processed_data = get_data(data_dict, self.config_args, mode=self.mode)
+        processed_data = get_data(data_dict, self.config_args)
         
         return {
             "image": processed_data['data'][0],  # Extract the preprocessed image
