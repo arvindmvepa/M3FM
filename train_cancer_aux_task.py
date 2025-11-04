@@ -21,6 +21,8 @@ from sklearn.metrics import roc_auc_score, accuracy_score, f1_score, precision_s
 # Import from M3FM
 import models.m3fm as m3fm
 from util import ConfigFile
+# Import the get_data function from M3FM
+from data import get_data
 
 
 # Add filter selection rules
@@ -72,11 +74,10 @@ def compute_aux_loss(logits, targets, pos_weight=None):
 
 
 class AuxVisionDataset(Dataset):
-    def __init__(self, json_path, mode="train", transform=None, img_size=96):
+    def __init__(self, json_path, mode="train", config_args=None):
         super().__init__()
         self.mode = mode
-        self.transform = transform
-        self.img_size = img_size
+        self.config_args = config_args
 
         with open(json_path, "r") as f:
             self.data_list = json.load(f)
@@ -89,70 +90,6 @@ class AuxVisionDataset(Dataset):
                 "target": datum_dict["numeric_answer"]
             })
 
-        # M3FM-style transforms - try different MONAI versions
-        if self.transform is None:
-            if mode == "train":
-                # Try EnsureChannelFirstd if AddChanneld doesn't exist
-                try:
-                    self.transform = mtf.Compose([
-                        mtf.LoadImaged(keys=["image"]),
-                        mtf.AddChanneld(keys=["image"]),
-                        mtf.Orientationd(keys=["image"], axcodes="RAS"),
-                        mtf.Spacingd(keys=["image"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
-                        mtf.ScaleIntensityRanged(keys=["image"], a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
-                        mtf.CropForegroundd(keys=["image"], source_key="image"),
-                        mtf.RandSpatialCropd(keys=["image"], roi_size=(self.img_size, self.img_size, self.img_size), random_size=False),
-                        mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=0),
-                        mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=1),
-                        mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=2),
-                        mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(0, 1)),
-                        mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(1, 2)),
-                        mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(0, 2)),
-                        mtf.ToTensord(keys=["image"]),
-                    ])
-                except AttributeError:
-                    # Fallback to EnsureChannelFirstd for newer MONAI versions
-                    self.transform = mtf.Compose([
-                        mtf.LoadImaged(keys=["image"]),
-                        mtf.EnsureChannelFirstd(keys=["image"]),
-                        mtf.Orientationd(keys=["image"], axcodes="RAS"),
-                        mtf.Spacingd(keys=["image"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
-                        mtf.ScaleIntensityRanged(keys=["image"], a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
-                        mtf.CropForegroundd(keys=["image"], source_key="image"),
-                        mtf.RandSpatialCropd(keys=["image"], roi_size=(self.img_size, self.img_size, self.img_size), random_size=False),
-                        mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=0),
-                        mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=1),
-                        mtf.RandFlipd(keys=["image"], prob=0.5, spatial_axis=2),
-                        mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(0, 1)),
-                        mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(1, 2)),
-                        mtf.RandRotate90d(keys=["image"], prob=0.5, spatial_axes=(0, 2)),
-                        mtf.ToTensord(keys=["image"]),
-                    ])
-            else:
-                try:
-                    self.transform = mtf.Compose([
-                        mtf.LoadImaged(keys=["image"]),
-                        mtf.AddChanneld(keys=["image"]),
-                        mtf.Orientationd(keys=["image"], axcodes="RAS"),
-                        mtf.Spacingd(keys=["image"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
-                        mtf.ScaleIntensityRanged(keys=["image"], a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
-                        mtf.CropForegroundd(keys=["image"], source_key="image"),
-                        mtf.CenterSpatialCropd(keys=["image"], roi_size=(self.img_size, self.img_size, self.img_size)),
-                        mtf.ToTensord(keys=["image"]),
-                    ])
-                except AttributeError:
-                    # Fallback to EnsureChannelFirstd for newer MONAI versions
-                    self.transform = mtf.Compose([
-                        mtf.LoadImaged(keys=["image"]),
-                        mtf.EnsureChannelFirstd(keys=["image"]),
-                        mtf.Orientationd(keys=["image"], axcodes="RAS"),
-                        mtf.Spacingd(keys=["image"], pixdim=(2.0, 2.0, 2.0), mode=("bilinear")),
-                        mtf.ScaleIntensityRanged(keys=["image"], a_min=-1024, a_max=1024, b_min=0.0, b_max=1.0, clip=True),
-                        mtf.CropForegroundd(keys=["image"], source_key="image"),
-                        mtf.CenterSpatialCropd(keys=["image"], roi_size=(self.img_size, self.img_size, self.img_size)),
-                        mtf.ToTensord(keys=["image"]),
-                    ])
-
     def __len__(self):
         return len(self.samples)
 
@@ -164,14 +101,18 @@ class AuxVisionDataset(Dataset):
         img_file = data["img_files"][best_idx]
         target = data["target"]
 
-        # Create dictionary for MONAI transforms (matching data.py)
-        data_dict = {"image": img_file}
-
-        if self.transform is not None:
-            data_dict = self.transform(data_dict)
-
+        # Use M3FM's get_data function for preprocessing
+        # This will handle all the cropping, spacing, intensity scaling etc.
+        data_dict = {
+            'data': [img_file],  # M3FM expects a list
+            'data_name': ['cancer_risk'],  # Use the task name from config
+        }
+        
+        # Apply M3FM preprocessing
+        processed_data = get_data(data_dict, self.config_args, mode=self.mode)
+        
         return {
-            "image": data_dict["image"],
+            "image": processed_data['data'][0],  # Extract the preprocessed image
             "target": target,
         }
 
@@ -288,7 +229,7 @@ class TrainingArguments:
     tag: str = field(default="", metadata={"help": "Additional tag for output directory."})
     use_weighted_loss: bool = field(default=False, metadata={"help": "Use weighted BCE loss."})
     pos_weight: float = field(default=None, metadata={"help": "Positive class weight."})
-    img_size: int = field(default=96, metadata={"help": "Image size for cropping."})
+    # Remove img_size and let crop_size be loaded from config
 
 
 def evaluate(loader, model, device):
@@ -355,6 +296,10 @@ def main():
     logger.info(f"Loading config from {args.config_path}")
     config_args = ConfigFile(args.config_path)
     
+    # Get crop_size from config
+    crop_size = config_args.crop_size
+    logger.info(f"Using crop_size from config: {crop_size}")
+    
     # Create model using the config (matching inference.py)
     torch.backends.cudnn.benchmark = True
     config_args.modalities = list(config_args.modalities.split(","))
@@ -386,16 +331,17 @@ def main():
         hidden_dim=embed_dim_img  # Use the model's embed_dim_img
     ).cuda(args.gpu)
 
-    # Build datasets with M3FM transforms
-    train_dataset = AuxVisionDataset(args.train_json, mode="train", img_size=args.img_size)
-    val_dataset = AuxVisionDataset(args.val_json, mode="val", img_size=args.img_size)
-    test_dataset = AuxVisionDataset(args.test_json, mode="test", img_size=args.img_size)
+    # Build datasets using M3FM's get_data function
+    train_dataset = AuxVisionDataset(args.train_json, mode="train", config_args=config_args)
+    val_dataset = AuxVisionDataset(args.val_json, mode="val", config_args=config_args)
+    test_dataset = AuxVisionDataset(args.test_json, mode="test", config_args=config_args)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True, num_workers=4)
 
     logger.info(f"Dataset sizes => train={len(train_dataset)}, val={len(val_dataset)}, test={len(test_dataset)}")
+    logger.info(f"Using crop_size: {crop_size}")
 
     # Setup optimizer
     pos_weight = None
