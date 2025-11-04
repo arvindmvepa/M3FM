@@ -20,7 +20,7 @@ from sklearn.metrics import roc_auc_score, accuracy_score, f1_score, precision_s
 
 # Import from M3FM
 import models.m3fm as m3fm
-from util import ConfigFile
+from util import ConfigFile, txt2embed, get_sincos_size_embed
 # Import the get_data function from M3FM
 from data import get_data
 
@@ -73,6 +73,112 @@ def compute_aux_loss(logits, targets, pos_weight=None):
     return cancer_loss
 
 
+def center_crop_resize(x, crop_size):
+    """Center crop the volume to crop_size, resizing if necessary."""
+    s, h, w = x.shape
+    ts, th, tw = crop_size
+    
+    # Calculate center coordinates
+    center_s, center_h, center_w = s // 2, h // 2, w // 2
+    
+    # Calculate crop boundaries (half crop_size around center)
+    half_ts, half_th, half_tw = ts // 2, th // 2, tw // 2
+    
+    # Ensure we don't go out of bounds
+    ss = max(0, center_s - half_ts)
+    se = min(s, center_s + half_ts)
+    hs = max(0, center_h - half_th) 
+    he = min(h, center_h + half_th)
+    ws = max(0, center_w - half_tw)
+    we = min(w, center_w + half_tw)
+    
+    # If the volume is smaller than crop_size, pad with zeros
+    if (se - ss) < ts or (he - hs) < th or (we - ws) < tw:
+        # Create zero-padded volume of crop_size
+        cropped = np.zeros((ts, th, tw), dtype=x.dtype)
+        
+        # Calculate where to place the actual data in the padded volume
+        actual_s, actual_h, actual_w = se - ss, he - hs, we - ws
+        pad_s_start = (ts - actual_s) // 2
+        pad_h_start = (th - actual_h) // 2  
+        pad_w_start = (tw - actual_w) // 2
+        
+        cropped[pad_s_start:pad_s_start + actual_s,
+                pad_h_start:pad_h_start + actual_h,
+                pad_w_start:pad_w_start + actual_w] = x[ss:se, hs:he, ws:we]
+        
+        x = cropped
+    else:
+        # Direct crop
+        x = x[ss:se, hs:he, ws:we]
+    
+    # Resize to exact crop_size if needed
+    if x.shape != (ts, th, tw):
+        x = torch.nn.functional.interpolate(
+            torch.from_numpy(x).unsqueeze(0).unsqueeze(0).to(torch.float32),
+            size=(ts, th, tw),
+            mode="trilinear",
+            align_corners=False,
+        ).numpy().squeeze()
+    
+    return x
+
+def get_data_center_crop(input_dict, args):
+    """Modified get_data function that uses center cropping instead of coordinate-based cropping."""
+    
+    # Extract required parameters (same as original)
+    ct_path = input_dict['ct_path']
+    data_name = args.data_name
+    crop_size = args.crop_size
+    patch_size = args.cube_size
+    hu_range = args.hu_range
+    embed_dim = args.embed_dim
+    question = input_dict['question']
+    clinical_txt = input_dict['clinical_txt']
+
+    # Load and preprocess data
+    data_ori = np.load(ct_path)
+    
+    # Use center crop instead of coordinate-based crop
+    data = center_crop_resize(data_ori, crop_size)
+    
+    # Use the same normalization and tensor conversion as original
+    from data import normalize, to_tensor
+    data = normalize([data], hu_range[0], hu_range[1])[0]
+    data = to_tensor([data])[0]
+
+    # Calculate size embeddings - use uniform scaling for center crop
+    # Since we're doing center crop, use the patch size directly for embedding
+    sizes = np.array([[patch_size[0], patch_size[1], patch_size[2]]])
+    size_embed = get_sincos_size_embed(embed_dim, sizes)
+    size_embed = torch.from_numpy(size_embed).to(torch.float32)
+
+    # Text processing (same as original)
+    question_ids, question_masks = txt2embed(question)
+    question_ids = torch.LongTensor(question_ids).unsqueeze(0)
+    question_masks = torch.LongTensor(question_masks).unsqueeze(0)
+
+    txt_ids, txt_masks = txt2embed(clinical_txt, max_length=160)
+    txt_ids = torch.LongTensor(txt_ids).unsqueeze(0)
+    txt_masks = torch.LongTensor(txt_masks).unsqueeze(0)
+    
+    # Return same data_dict format as original
+    data_dict = {
+        'data': data.unsqueeze(0), 
+        'questions': question,
+        'questions_ids': question_ids.unsqueeze(0), 
+        'questions_mask': question_masks.unsqueeze(0),
+        'data_size': torch.LongTensor(crop_size).unsqueeze(0),
+        'txt_ids': txt_ids.unsqueeze(0), 
+        'txt_mask': txt_masks.unsqueeze(0),
+        'size_embed': size_embed.unsqueeze(0), 
+        "clinical_txt": clinical_txt,
+        'patch_size': patch_size,
+        'data_name': [data_name]
+    }
+
+    return data_dict
+
 class AuxVisionDataset(Dataset):
     def __init__(self, json_path, mode="train", config_args=None):
         super().__init__()
@@ -101,15 +207,15 @@ class AuxVisionDataset(Dataset):
         img_file = data["img_files"][best_idx]
         target = data["target"]
 
-        # Use M3FM's get_data function for preprocessing
-        # This will handle all the cropping, spacing, intensity scaling etc.
-        data_dict = {
-            'data': [img_file],  # M3FM expects a list
-            'data_name': ['cancer_risk'],  # Use the task name from config
+        # Create input dict for center crop preprocessing (no pixel_size or coords needed)
+        input_dict = {
+            'ct_path': img_file,
+            'question': 'Predict cancer risk',
+            'clinical_txt': '',  # Empty since we're not using clinical text for this task
         }
         
-        # Apply M3FM preprocessing
-        processed_data = get_data(data_dict, self.config_args)
+        # Use our custom center crop function instead of original get_data
+        processed_data = get_data_center_crop(input_dict, self.config_args)
         
         return {
             "image": processed_data['data'][0],  # Extract the preprocessed image
