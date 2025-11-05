@@ -522,6 +522,7 @@ def main():
             best_val_loss = avg_val_loss
             torch.save(model.state_dict(), best_model_path)
             logger.info(f"  ➜ New best model saved ({best_val_loss:.5f})")
+        break
 
     # Test evaluation - single evaluation call
     logger.info("========== TEST ==========")
