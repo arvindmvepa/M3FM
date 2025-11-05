@@ -382,8 +382,6 @@ def evaluate(loader, model, device, pos_weight=None):
             all_logits.extend(probs.detach().cpu().numpy())
             all_predictions.extend(preds.detach().cpu().numpy())
             all_targets.extend(target.detach().cpu().numpy())
-            
-            break
 
     all_predictions = np.array(all_predictions)
     all_targets = np.array(all_targets)
@@ -505,7 +503,6 @@ def main():
             optimizer.step()
 
             total_loss += loss.item()
-            break
 
         avg_train_loss = total_loss / len(train_loader)
         logger.info(f"[Epoch {epoch + 1}] Train loss = {avg_train_loss:.5f}")
@@ -522,7 +519,6 @@ def main():
             best_val_loss = avg_val_loss
             torch.save(model.state_dict(), best_model_path)
             logger.info(f"  ➜ New best model saved ({best_val_loss:.5f})")
-        break
 
     # Test evaluation - single evaluation call
     logger.info("========== TEST ==========")
