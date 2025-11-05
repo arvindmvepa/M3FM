@@ -354,33 +354,42 @@ class TrainingArguments:
     # Remove img_size and let crop_size be loaded from config
 
 
-def evaluate(loader, model, device):
+def evaluate(loader, model, device, pos_weight=None):
     model.eval()
 
     all_predictions = []
     all_targets = []
     all_logits = []
+    total_loss = 0.0
 
-    for batch in loader:
-        img = batch["image"].to(device)
-        target = batch["target"].to(device)
-        target = target.squeeze(-1).long()
-        
-        with torch.no_grad():
-            out = model(img)
+    with torch.no_grad():
+        for batch in tqdm(loader, desc="Evaluating"):
+            img = batch["image"].to(device)
+            target = batch["target"].to(device)
+            
+            # Forward pass
+            logits = model(img)
+            
+            # Calculate loss
+            loss = compute_aux_loss(logits, target, pos_weight=pos_weight)
+            total_loss += loss.item()
+            
+            # Collect predictions and targets
+            probs = torch.sigmoid(logits.squeeze(-1))
+            preds = (probs > 0.5).long()
+            target = target.squeeze(-1).long()
 
-        logits = out.squeeze(-1)
-        probs = torch.sigmoid(logits)
-        preds = (probs > 0.5).long()
-
-        all_logits.extend(probs.detach().cpu().numpy())
-        all_predictions.extend(preds.detach().cpu().numpy())
-        all_targets.extend(target.detach().cpu().numpy())
+            all_logits.extend(probs.detach().cpu().numpy())
+            all_predictions.extend(preds.detach().cpu().numpy())
+            all_targets.extend(target.detach().cpu().numpy())
+            
+            break
 
     all_predictions = np.array(all_predictions)
     all_targets = np.array(all_targets)
     all_logits = np.array(all_logits)
 
+    # Calculate metrics
     accuracy = accuracy_score(all_targets, all_predictions)
     f1 = f1_score(all_targets, all_predictions)
     precision = precision_score(all_targets, all_predictions, zero_division=0)
@@ -391,7 +400,10 @@ def evaluate(loader, model, device):
     else:
         auc = 0.0
 
+    avg_loss = total_loss / len(loader)
+
     return {
+        "loss": avg_loss,
         "accuracy": accuracy,
         "f1_score": f1,
         "precision": precision,
@@ -498,56 +510,27 @@ def main():
         avg_train_loss = total_loss / len(train_loader)
         logger.info(f"[Epoch {epoch + 1}] Train loss = {avg_train_loss:.5f}")
 
-        # Validation
-        model.eval()
-        val_total_loss = 0.0
-
-        with torch.no_grad():
-            for batch in tqdm(val_loader, desc=f"Epoch {epoch + 1} [Val]"):
-                image = batch["image"].cuda(args.gpu)
-                targets = batch["target"].cuda(args.gpu)
-
-                logits = model(image)
-                v_loss = compute_aux_loss(logits, targets, pos_weight=pos_weight)
-
-                val_total_loss += v_loss.item()
-                break
-
-        avg_val_loss = val_total_loss / len(val_loader)
-        val_metrics = evaluate(val_loader, model, torch.device(f'cuda:{args.gpu}'))
+        # Validation - single evaluation call
+        val_metrics = evaluate(val_loader, model, torch.device(f'cuda:{args.gpu}'), pos_weight=pos_weight)
+        avg_val_loss = val_metrics["loss"]
 
         logger.info(f"[Epoch {epoch + 1}] Val loss = {avg_val_loss:.5f} " +
-                    " ".join([f"{k}={v:.4f}" for k, v in val_metrics.items()]))
+                    " ".join([f"{k}={v:.4f}" for k, v in val_metrics.items() if k != "loss"]))
 
         # Save best checkpoint
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             torch.save(model.state_dict(), best_model_path)
             logger.info(f"  ➜ New best model saved ({best_val_loss:.5f})")
-        break
 
-    # Test evaluation
+    # Test evaluation - single evaluation call
     logger.info("========== TEST ==========")
     model.load_state_dict(torch.load(best_model_path, map_location=f'cuda:{args.gpu}'))
-    model.eval()
-
-    test_total_loss = 0.0
-
-    with torch.no_grad():
-        for batch in tqdm(test_loader, desc="[Test]"):
-            image = batch["image"].cuda(args.gpu)
-            targets = batch["target"].cuda(args.gpu)
-
-            logits = model(image)
-            t_loss = compute_aux_loss(logits, targets, pos_weight=pos_weight)
-
-            test_total_loss += t_loss.item()
-
-    avg_test_loss = test_total_loss / len(test_loader)
-    test_metrics = evaluate(test_loader, model, torch.device(f'cuda:{args.gpu}'))
-
-    logger.info(f"Best-val model Test loss = {avg_test_loss:.5f} " +
-                " ".join([f"{k}={v:.4f}" for k, v in test_metrics.items()]))
+    
+    test_metrics = evaluate(test_loader, model, torch.device(f'cuda:{args.gpu}'), pos_weight=pos_weight)
+    
+    logger.info(f"Best-val model Test loss = {test_metrics['loss']:.5f} " +
+                " ".join([f"{k}={v:.4f}" for k, v in test_metrics.items() if k != "loss"]))
 
 
 if __name__ == "__main__":
