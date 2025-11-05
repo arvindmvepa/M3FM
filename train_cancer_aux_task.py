@@ -147,9 +147,17 @@ def get_data_center_crop(input_dict, args):
     data = normalize([data], hu_range[0], hu_range[1])[0]
     data = to_tensor([data])[0]
 
-    # Calculate size embeddings - use uniform scaling for center crop
-    # Since we're doing center crop, use the patch size directly for embedding
-    sizes = np.array([[patch_size[0], patch_size[1], patch_size[2]]])
+    # Calculate size embeddings with realistic physical dimensions
+    # Use default pixel spacing that matches M3FM training data
+    pix_size = [2.0, 0.53, 0.53]  # Default spacing: slice=2mm, in-plane=0.53mm
+    
+    # Calculate actual physical patch size (what the model expects)
+    sizes = np.array([[
+        pix_size[0] * patch_size[0],  # Physical depth: 2.0 * 16 = 32.0 mm
+        pix_size[1] * patch_size[1],  # Physical height: 0.53 * 16 = 8.48 mm
+        pix_size[2] * patch_size[2]   # Physical width: 0.53 * 16 = 8.48 mm
+    ]])
+    
     size_embed = get_sincos_size_embed(embed_dim, sizes)
     size_embed = torch.from_numpy(size_embed).to(torch.float32)
 
@@ -217,18 +225,19 @@ class AuxVisionDataset(Dataset):
         img_file = data["img_files"][best_idx]
         target = data["target"]
 
-        # Create input dict for center crop preprocessing (no pixel_size or coords needed)
+        # Create input dict for center crop preprocessing
         input_dict = {
-            'ct_path': get_npy_path(img_file, self.img_root),  # Use instance variable
+            'ct_path': get_npy_path(img_file, self.img_root),
             'question': 'Predict cancer risk',
-            'clinical_txt': '',  # Empty since we're not using clinical text for this task
+            'clinical_txt': '',
         }
         
-        # Use our custom center crop function instead of original get_data
+        # Use our custom center crop function
         processed_data = get_data_center_crop(input_dict, self.config_args)
         
         return {
             "image": processed_data['data'][0],  # Extract the preprocessed image
+            "size_embed": processed_data['size_embed'][0],  # Pass the precomputed size_embed
             "target": target,
         }
 
@@ -262,34 +271,56 @@ class CTViTCancerClassifier(nn.Module):
     def __init__(
         self,
         m3fm_model: nn.Module,
-        hidden_dim=768
+        hidden_dim=1024,
+        freeze_encoder=True
     ):
         super().__init__()
         self.m3fm_model = m3fm_model
         self.hidden_dim = hidden_dim
+        self.freeze_encoder = freeze_encoder
         
         # Single linear layer - we'll use global average pooling
         self.cancer_head = nn.Linear(self.hidden_dim, 1)
 
-    def forward(self, image):
+    def forward(self, image, size_embed):  # Accept size_embed as parameter
         B = image.size(0)
 
-        # Copy the exact approach from M3FM.pred_embeds (lines 240-261)
-        with torch.no_grad():
-            # Line 240: self.ims = (imgs.shape[2], imgs.shape[3], imgs.shape[4])
+        # Feature extraction with proper gradient handling
+        if self.freeze_encoder:
+            with torch.no_grad():
+                # Set image size for tokenizer selection
+                self.m3fm_model.ims = (image.shape[2], image.shape[3], image.shape[4])
+                
+                # Tokenize image
+                img_embeds = self.m3fm_model.img_tokenizer(image)
+                
+                # Use the precomputed size_embed (no need to recalculate)
+                img_embeds = img_embeds + size_embed.to(img_embeds.device)
+                
+                # Get input size for spatial processing
+                input_size = self.m3fm_model.img_tokenizer.__getattr__('tokenizer_{}'.format(self.m3fm_model.ims)).input_size
+                
+                # Pass through encoder_img
+                feats = self.m3fm_model.encoder_img(
+                    img_embeds,
+                    window_size=self.m3fm_model.window_size,
+                    window_block_indexes=self.m3fm_model.window_block_indexes,
+                    spatial_size=input_size,
+                    cls_embed=self.m3fm_model.cls_embed_img,
+                    attention_mask=None,
+                    drop_path=0.0,
+                    drop=0.0
+                )
+        else:
+            # Allow gradients for fine-tuning
             self.m3fm_model.ims = (image.shape[2], image.shape[3], image.shape[4])
-            
-            # Line 241: img_embeds = self.m3fm_model.img_tokenizer(imgs)
             img_embeds = self.m3fm_model.img_tokenizer(image)
             
-            # Lines 252-254: Get input_size exactly as in the original code
-            # if 'data' not in data_dict.keys():
-            #     input_size = self.img_tokenizer.__getattr__('tokenizer_{}'.format(self.ims)).input_size
-            # else:
-            #     input_size = self.img_tokenizer.__getattr__('tokenizer_{}'.format(self.ims)).input_size
+            # Use the precomputed size_embed (no need to recalculate)
+            img_embeds = img_embeds + size_embed.to(img_embeds.device)
+            
             input_size = self.m3fm_model.img_tokenizer.__getattr__('tokenizer_{}'.format(self.m3fm_model.ims)).input_size
             
-            # Lines 255-261: Pass through encoder_img
             feats = self.m3fm_model.encoder_img(
                 img_embeds,
                 window_size=self.m3fm_model.window_size,
@@ -302,7 +333,7 @@ class CTViTCancerClassifier(nn.Module):
             )
 
         # Global average pooling across all patch tokens
-        mdl_feats = feats.mean(dim=1)  # [B, hidden_dim]
+        mdl_feats = feats.mean(dim=1)  # [B, embed_dim_img]
 
         logits = self.cancer_head(mdl_feats)  # [B, 1]
         return logits
@@ -351,7 +382,6 @@ class TrainingArguments:
     tag: str = field(default="", metadata={"help": "Additional tag for output directory."})
     use_weighted_loss: bool = field(default=False, metadata={"help": "Use weighted BCE loss."})
     pos_weight: float = field(default=None, metadata={"help": "Positive class weight."})
-    # Remove img_size and let crop_size be loaded from config
 
 
 def evaluate(loader, model, device, pos_weight=None):
@@ -365,10 +395,11 @@ def evaluate(loader, model, device, pos_weight=None):
     with torch.no_grad():
         for batch in tqdm(loader, desc="Evaluating"):
             img = batch["image"].to(device)
+            size_embed = batch["size_embed"].to(device)  # Get precomputed size_embed
             target = batch["target"].to(device)
             
             # Forward pass
-            logits = model(img)
+            logits = model(img, size_embed)  # Pass size_embed to model
             
             # Calculate loss
             loss = compute_aux_loss(logits, target, pos_weight=pos_weight)
@@ -457,10 +488,11 @@ def main():
             param.requires_grad = False
         logger.info("M3FM image tokenizer and encoder are frozen.")
 
-    # Build cancer classifier - pass the full model so we can access tokenizer and encoder
+    # Build cancer classifier
     model = CTViTCancerClassifier(
         m3fm_model=model_full,
-        hidden_dim=embed_dim_img  # Use the model's embed_dim_img
+        hidden_dim=embed_dim_img,
+        freeze_encoder=args.freeze_ctvit
     ).cuda(args.gpu)
 
     # Build datasets using M3FM's get_data function - pass img_root
@@ -493,10 +525,11 @@ def main():
 
         for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1} [Train]"):
             image = batch["image"].cuda(args.gpu)
+            size_embed = batch["size_embed"].cuda(args.gpu)  # Get precomputed size_embed
             targets = batch['target'].cuda(args.gpu)
 
             optimizer.zero_grad()
-            logits = model(image)
+            logits = model(image, size_embed)  # Pass size_embed to model
 
             loss = compute_aux_loss(logits, targets, pos_weight=pos_weight)
             loss.backward()
