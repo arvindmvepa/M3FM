@@ -209,9 +209,8 @@ class AuxVisionDataset(Dataset):
         self.samples = []
         for datum_dict in self.data_list:
             self.samples.append({
-                "img_files": datum_dict["img_files"],
-                "filters": datum_dict.get("filters", []),
-                "target": datum_dict["numeric_answer"]
+                "embedding_path": datum_dict["embedding_path"],
+                "target": int(datum_dict["content_info"]["cancer"])
             })
 
     def __len__(self):
@@ -220,14 +219,14 @@ class AuxVisionDataset(Dataset):
     def __getitem__(self, idx):
         data = self.samples[idx]
         
-        # Select best filter
-        best_idx = self.best_filter_index(data["filters"])
-        img_file = data["img_files"][best_idx]
         target = data["target"]
 
         # Create input dict for center crop preprocessing
         input_dict = {
-            'ct_path': get_npy_path(img_file, self.img_root),
+            'ct_path': data["embedding_path"],
+            'question': 'Predict cancer risk',
+            'clinical_txt': '',
+        }
             'question': 'Predict cancer risk',
             'clinical_txt': '',
         }
@@ -240,31 +239,6 @@ class AuxVisionDataset(Dataset):
             "size_embed": processed_data['size_embed'][0],  # Pass the precomputed size_embed
             "target": target,
         }
-
-    def best_filter_index(self, filters) -> int:
-        """Select best filter based on kernel priority."""
-        if not filters:
-            return 0
-        
-        # Handle both dict and string cases
-        priorities = []
-        for f in filters:
-            if isinstance(f, dict):
-                kernel = f.get("kernel", "")
-            elif isinstance(f, str):
-                kernel = f
-            else:
-                kernel = ""
-            priorities.append(self._priority(kernel))
-        
-        return int(np.argmin(priorities))
-    
-    def _priority(self, kernel) -> int:
-        """Return priority of kernel (lower = better)."""
-        for priority, pattern in _RULES:
-            if pattern.search(kernel):
-                return priority
-        return 9
 
 
 class CTViTCancerClassifier(nn.Module):
@@ -356,20 +330,20 @@ class TrainingArguments:
     
     # Add img_root as an argument
     img_root: str = field(
-        default="/hsuraid/avepa/nlst_npy_v1",
+        default="/hsuraid/avepa/nlst_npy_m3fm",
         metadata={"help": "Root directory for .npy files."}
     )
     
     train_json: str = field(
-        default="/home/avepa/MedTrinity-25M/nlst_aux_cancer_train_v7.json",
+        default="/home/avepa/MedTrinity-25M/nlst_cancer_train_aux_vqa_delta2True_v1_m3fm.json",
         metadata={"help": "Path to training JSON file."}
     )
     val_json: str = field(
-        default="/home/avepa/MedTrinity-25M/nlst_aux_cancer_val_v7.json",
+        default="/home/avepa/MedTrinity-25M/nlst_cancer_val_aux_vqa_delta2True_v1_m3fm.json",
         metadata={"help": "Path to validation JSON file."}
     )
     test_json: str = field(
-        default="/home/avepa/MedTrinity-25M/nlst_aux_cancer_test_v7.json",
+        default="/home/avepa/MedTrinity-25M/nlst_cancer_test_aux_vqa_delta2True_v1_m3fm.json",
         metadata={"help": "Path to test JSON file."}
     )
     
