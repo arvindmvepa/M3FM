@@ -25,22 +25,6 @@ from util import ConfigFile, txt2embed, get_sincos_size_embed
 from data import get_data
 
 
-# Add filter selection rules
-_RULES = [
-    (0, re.compile(r"\bb7\d|b70f", re.I)),  # Siemens very-sharp
-    (1, re.compile(r"\bb50f?", re.I)),  # Siemens sharp
-    (1, re.compile(r"\bbone|lspluslung|qxd|lung", re.I)),  # GE bone / lung
-    (1, re.compile(r"fc5\d", re.I)),  # Toshiba FC51/FC53
-    (1, re.compile(r"\bphil.*d\b", re.I)),  # Philips D kernels
-    (2, re.compile(r"\bb40f", re.I)),  # Siemens medium-sharp
-    (3, re.compile(r"\bb3\d+f?", re.I)),  # Siemens B30 family
-    (3, re.compile(r"\bfc10|fc0[12]", re.I)),  # Toshiba FC10/FC02/FC01
-    (4, re.compile(r"\bstandard|std", re.I)),  # GE Standard
-    (4, re.compile(r"\bphil.*[bc]\b", re.I)),  # Philips C / B
-    (9, re.compile(r".*")),  # fallback: worst
-]
-
-
 def setup_logger(log_file="training.log", log_to_console=True):
     logger = logging.getLogger("training_logger")
     logger.setLevel(logging.INFO)
@@ -224,9 +208,6 @@ class AuxVisionDataset(Dataset):
         # Create input dict for center crop preprocessing
         input_dict = {
             'ct_path': data["embedding_path"],
-            'question': 'Predict cancer risk',
-            'clinical_txt': '',
-        }
             'question': 'Predict cancer risk',
             'clinical_txt': '',
         }
