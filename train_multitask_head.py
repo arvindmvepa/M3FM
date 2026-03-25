@@ -520,7 +520,7 @@ def main():
     parser = HfArgumentParser(TrainingArguments)
     (args,) = parser.parse_args_into_dataclasses()
 
-    output_dir = args.output_dir + f"_freeze_{args.freeze_ctvit}_epochs_{args.num_epochs}_weighted_{args.use_weighted_loss}" + args.tag
+    output_dir = args.output_dir + f"_freeze_{args.freeze_ctvit}_epochs_{args.num_epochs}" + args.tag
     os.makedirs(output_dir, exist_ok=True)
     
     logger = setup_logger(
