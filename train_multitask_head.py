@@ -205,7 +205,7 @@ class AuxVisionDataset(Dataset):
         data = self.samples[idx]
         
         # Extract labels (only first entry of each list)
-        content_info = item['content_info']
+        content_info = data['content_info']
         
         # Multi-class tasks (first 5)
         location = content_info['location'][0]
