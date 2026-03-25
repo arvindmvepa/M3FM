@@ -588,7 +588,7 @@ def main():
         total_loss = 0.0
 
         for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1} [Train]"):
-            image = batch["image"].cuda(args.gpu)
+            img = batch["image"].cuda(args.gpu)
             size_embed = batch["size_embed"].cuda(args.gpu)  # Get precomputed size_embed
             classification_labels = batch['classification_labels'].cuda(args.gpu)
             regression_labels = batch['regression_labels'].cuda(args.gpu)
@@ -596,7 +596,7 @@ def main():
             regression_mask = batch['regression_mask'].cuda(args.gpu)
 
             optimizer.zero_grad()
-            classification_outputs, regression_output = model(embeddings)
+            classification_outputs, regression_output = model(img, size_embed)
             
             loss, loss_dict = criterion(classification_outputs, regression_output,
                                       classification_labels, regression_labels,
