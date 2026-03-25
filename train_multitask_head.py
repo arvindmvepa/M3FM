@@ -189,14 +189,7 @@ class AuxVisionDataset(Dataset):
         self.img_root = img_root  # Store img_root as instance variable
 
         with open(json_path, "r") as f:
-            self.data_list = json.load(f)
-
-        self.samples = []
-        for datum_dict in self.data_list:
-            self.samples.append({
-                "embedding_path": datum_dict["embedding_path"],
-                "target": int(datum_dict["content_info"]["cancer"])
-            })
+            self.samples = json.load(f)
 
     def __len__(self):
         return len(self.samples)
