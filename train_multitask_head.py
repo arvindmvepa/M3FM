@@ -494,15 +494,15 @@ class TrainingArguments:
     )
     
     train_json: str = field(
-        default="/home/avepa/MedTrinity-25M/nlst_cancer_train_aux_vqa_delta2True_v1_m3fm.json",
+        default="/home/avepa/MedTrinity-25M/nlst_train_aux_vqa_delta2True_v1_m3fm.json",
         metadata={"help": "Path to training JSON file."}
     )
     val_json: str = field(
-        default="/home/avepa/MedTrinity-25M/nlst_cancer_val_aux_vqa_delta2True_v1_m3fm.json",
+        default="/home/avepa/MedTrinity-25M/nlst_val_aux_vqa_delta2True_v1_m3fm.json",
         metadata={"help": "Path to validation JSON file."}
     )
     test_json: str = field(
-        default="/home/avepa/MedTrinity-25M/nlst_cancer_test_aux_vqa_delta2True_v1_m3fm.json",
+        default="/home/avepa/MedTrinity-25M/nlst_test_aux_vqa_delta2True_v1_m3fm.json",
         metadata={"help": "Path to test JSON file."}
     )
     
