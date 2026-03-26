@@ -607,7 +607,7 @@ def main():
 
             total_loss += loss.item()
 
-        avg_train_loss = total_train_loss / len(train_loader)
+        avg_train_loss = total_loss / len(train_loader)
         
         # Validation
         val_metrics = evaluate_model(model, val_loader, criterion, args.gpu)
