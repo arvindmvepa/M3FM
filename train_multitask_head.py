@@ -392,13 +392,14 @@ regression_task_names = ('longest_diameter', 'longest_perpendicular_diameter')):
     
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Evaluating"):
-            embeddings = batch['embedding'].cuda(gpu)
+            img = batch["image"].cuda(gpu)
+            size_embed = batch["size_embed"].cuda(gpu)  # Get precomputed size_embed
             classification_labels = batch['classification_labels'].cuda(gpu)
             regression_labels = batch['regression_labels'].cuda(gpu)
             classification_mask = batch['classification_mask'].cuda(gpu)
             regression_mask = batch['regression_mask'].cuda(gpu)
             
-            classification_outputs, regression_output = model(embeddings)
+            classification_outputs, regression_output = model(img, size_embed)
             
             loss, _ = criterion(classification_outputs, regression_output,
                               classification_labels, regression_labels,
@@ -606,6 +607,7 @@ def main():
             optimizer.step()
 
             total_loss += loss.item()
+            break
 
         avg_train_loss = total_loss / len(train_loader)
         
