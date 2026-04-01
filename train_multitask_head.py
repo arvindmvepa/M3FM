@@ -458,10 +458,29 @@ regression_task_names = ('longest_diameter', 'longest_perpendicular_diameter')):
     # Regression metrics
     for i, task_name in enumerate(regression_task_names):
         if len(all_regression_preds[i]) > 0:
-            mse = mean_squared_error(all_regression_labels[i], all_regression_preds[i])
-            r2 = r2_score(all_regression_labels[i], all_regression_preds[i])
-            metrics[f'{task_name}_mse'] = mse
-            metrics[f'{task_name}_r2'] = r2
+            try:
+                preds = np.array(all_regression_preds[i])
+                labels = np.array(all_regression_labels[i])
+                finite_mask = np.isfinite(preds) & np.isfinite(labels)
+                if finite_mask.sum() > 0:
+                    valid_preds = preds[finite_mask]
+                    valid_labels = labels[finite_mask]
+                    mse = mean_squared_error(valid_labels, valid_preds)
+                    r2 = r2_score(valid_labels, valid_preds)
+                    metrics[f'{task_name}_mse'] = mse
+                    metrics[f'{task_name}_r2'] = r2
+                    metrics[f'{task_name}_valid_samples'] = finite_mask.sum()
+                else:
+                    # No valid samples
+                    metrics[f'{task_name}_mse'] = np.nan
+                    metrics[f'{task_name}_r2'] = np.nan
+                    metrics[f'{task_name}_valid_samples'] = 0
+                    print(f"Warning: No valid samples for {task_name} regression task")
+            except Exception as e:
+                print(f"Warning: Could not compute regression metrics for {task_name}: {e}")
+                metrics[f'{task_name}_mse'] = np.nan
+                metrics[f'{task_name}_r2'] = np.nan
+                metrics[f'{task_name}_valid_samples'] = 0
     
     return metrics
 
@@ -614,7 +633,7 @@ def main():
         val_metrics = evaluate_model(model, val_loader, criterion, args.gpu)
         val_loss = val_metrics['loss']
         
-        print(f"Epoch {epoch+1}/{args.epochs}")
+        print(f"Epoch {epoch+1}/{args.num_epochs}")
         print(f"Train Loss: {avg_train_loss:.4f}")
         print(f"Val Loss: {val_loss:.4f}")
         
@@ -636,16 +655,16 @@ def main():
                 'val_loss': val_loss,
                 'val_metrics': val_metrics
             }
-            torch.save(checkpoint, os.path.join(args.save_dir, 'best_model.pt'))
+            torch.save(checkpoint, os.path.join(output_dir, 'best_model.pt'))
             print(f"New best model saved with val loss: {val_loss:.4f}")
     
     print(f"Training completed. Best epoch: {best_epoch+1}, Best val loss: {best_val_loss:.4f}")
     
     # Load best model for testing
     print("Loading best model for testing...")
-    checkpoint = torch.load(os.path.join(args.save_dir, 'best_model.pt'))
+    checkpoint = torch.load(os.path.join(output_dir, 'best_model.pt'))
     model.load_state_dict(checkpoint['model_state_dict'])
-    
+    model.cuda(args.gpu)
     # Test evaluation
     print("Evaluating on test set...")
     test_metrics = evaluate_model(model, test_loader, criterion, args.gpu)
@@ -655,11 +674,9 @@ def main():
         print(f"Test {metric_name}: {value:.4f}")
     
     # Save test results
-    with open(os.path.join(args.save_dir, 'test_results.json'), 'w') as f:
+    with open(os.path.join(output_dir, 'test_results.json'), 'w') as f:
         json.dump(test_metrics, f, indent=2)
     
-    print(f"Test results saved to {os.path.join(args.save_dir, 'test_results.json')}")
-
-
+    print(f"Test results saved to {os.path.join(output_dir, 'test_results.json')}")
 if __name__ == "__main__":
     main()
