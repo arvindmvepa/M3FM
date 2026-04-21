@@ -241,8 +241,9 @@ class CTViTEmbedHead(nn.Module):
                 drop_path=0.0,
                 drop=0.0
             )
+            mdl_feats = feats.mean(dim=1)
         
-        return feats
+        return mdl_feats
 
 
 @dataclass
@@ -289,7 +290,7 @@ def generate_embeddings(model, loader, args, output_dir, tag="train"):
             embedding_feats = model(img, size_embed)
             print(embedding_feats.size())
             new_save_path = os.path.join(output_dir, os.path.basename(path)[:-3] + "st")
-            save_file({"embeddings": embedding_feats[0]}, new_save_path) 
+            save_file({"embeddings": embedding_feats}, new_save_path) 
 
 def main():
     parser = HfArgumentParser(TrainingArguments)
