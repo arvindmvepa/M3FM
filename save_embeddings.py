@@ -286,10 +286,10 @@ def generate_embeddings(model, loader, args, output_dir, tag="train"):
             path = batch['ct_path'][0]
             img = batch["image"].cuda(args.gpu)
             size_embed = batch["size_embed"].cuda(args.gpu)  # Get precomputed size_embed
-            embedding_feats = model(img, size_embed)[0]
+            embedding_feats = model(img, size_embed)
             print(embedding_feats.size())
             new_save_path = os.path.join(output_dir, os.path.basename(path)[:-3] + "st")
-            save_file({"embeddings": embedding_feats}, new_save_path) 
+            save_file({"embeddings": embedding_feats[0]}, new_save_path) 
 
 def main():
     parser = HfArgumentParser(TrainingArguments)
