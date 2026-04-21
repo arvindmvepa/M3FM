@@ -328,14 +328,6 @@ def main():
     embed_dim_img = model_full.embed_dim_img
     logger.info(f"Using embed_dim_img={embed_dim_img} from M3FM model")
 
-    # Freeze M3FM components if requested (img_tokenizer and encoder_img)
-    if args.freeze_ctvit:
-        for param in model_full.img_tokenizer.parameters():
-            param.requires_grad = False
-        for param in model_full.encoder_img.parameters():
-            param.requires_grad = False
-        logger.info("M3FM image tokenizer and encoder are frozen.")
-
     # Build cancer classifier
     model = CTViTEmbedHead(
         m3fm_model=model_full,
