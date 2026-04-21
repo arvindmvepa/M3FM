@@ -252,7 +252,7 @@ class TrainingArguments:
         default="/home/avepa/MedTrinity-25M/nlst_test_aux_vqa_delta2True_v1_m3fm.json",
         metadata={"help": "Path to test JSON file."}
     )
-    output_dir: str = field(default="./multitask_aux_output", metadata={"help": "Output directory."})
+    output_dir: str = field(default="./m3fm_embeddings", metadata={"help": "Output directory."})
     device: str = field(default="cuda", metadata={"help": "Device to use."})
     gpu: int = field(default=0, metadata={"help": "GPU ID to use."})
     tag: str = field(default="", metadata={"help": "Additional tag for output directory."})
@@ -275,7 +275,7 @@ def main():
     parser = HfArgumentParser(TrainingArguments)
     (args,) = parser.parse_args_into_dataclasses()
 
-    output_dir = args.output_dir + f"_freeze_{args.freeze_ctvit}_save_embeddings" + args.tag
+    output_dir = args.output_dir + args.tag
     os.makedirs(output_dir, exist_ok=True)
     
     logger = setup_logger(
