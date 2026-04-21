@@ -27,6 +27,26 @@ from util import ConfigFile, txt2embed, get_sincos_size_embed
 from data import get_data
 
 
+def setup_logger(log_file="training.log", log_to_console=True):
+    logger = logging.getLogger("embedding_logger")
+    logger.setLevel(logging.INFO)
+    logger.handlers = []
+
+    fh = logging.FileHandler(log_file, mode="w")
+    fh.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+
+    if log_to_console:
+        ch = logging.StreamHandler(sys.stdout)
+        ch.setLevel(logging.INFO)
+        ch.setFormatter(formatter)
+        logger.addHandler(ch)
+
+    return logger
+
+
 def center_crop_resize(x, crop_size):
     """Center crop the volume to crop_size, resizing if necessary."""
     s, h, w = x.shape
