@@ -259,8 +259,8 @@ class TrainingArguments:
 
 
 def generate_embeddings(model, loader, args, output_dir, tag="train"):
-    save_path = os.path.join(save_dir, f"pid{pid}_ts{time_index}.st")
-
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     with torch.no_grad():
         for batch in tqdm(loader, desc=f"[Generate {tag} Embeddings]"):
             path = batch['ct_path'][0]
@@ -330,14 +330,14 @@ def main():
 
     train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, drop_last=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, drop_last=True, num_workers=4)
-    test_loader = DataLoader(test_dataset, batch_size=1e, shuffle=False, drop_last=True, num_workers=4)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, drop_last=True, num_workers=4)
 
     logger.info(f"Dataset sizes => train={len(train_dataset)}, val={len(val_dataset)}, test={len(test_dataset)}")
     logger.info(f"Using crop_size: {crop_size}")
 
-    generate_embeddings(model, train_loader, args, output_dir, tag="train")
-    generate_embeddings(model, val_loader, args, output_dir, tag="val")
-    generate_embeddings(model, test_loader, args, output_dir, tag="test")
+    generate_embeddings(model, train_loader, args, os.path.join(output_dir, "train"), tag="train")
+    generate_embeddings(model, val_loader, args, os.path.join(output_dir, "val"), tag="val")
+    generate_embeddings(model, test_loader, args, os.path.join(output_dir, "test"), tag="test")
 
 if __name__ == "__main__":
     main()
