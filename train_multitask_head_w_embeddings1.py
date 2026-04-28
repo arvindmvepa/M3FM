@@ -67,19 +67,14 @@ class AuxVisionDataset(Dataset):
         pid = data['pid']
         embedding_path_ts0 = data["embedding_path_ts0"]
         embedding_path_ts1 = data["embedding_path_ts1"]
-        embedding_path_ts2 = data["embedding_path_ts2"]
         if os.path.exists(embedding_path_ts0):
             embeddings1 = load_file(embedding_path_ts0)['embeddings']
         else:
-            embeddings1 = torch.zeros(1, 1024) 
+            embeddings1 = torch.zeros(1024)
         if os.path.exists(embedding_path_ts1):
             embeddings2 = load_file(embedding_path_ts1)['embeddings']
         else:
-            embeddings2 = torch.zeros(1, 1024)
-        if os.path.exists(embedding_path_ts2):
-            embeddings3 = load_file(embedding_path_ts2)['embeddings']
-        else:
-            embeddings3 = torch.zeros(1, 1024)
+            embeddings2 = torch.zeros(1024)
         
         content_info = data['numeric_dict']
         
@@ -101,7 +96,6 @@ class AuxVisionDataset(Dataset):
             "pid": pid,
             "embeddings1": embeddings1,
             "embeddings2": embeddings2,
-            "embeddings3": embeddings3,
             'classification_labels': classification_labels,
             'classification_mask': classification_mask,
         }
@@ -127,8 +121,8 @@ class CTViTMultitaskHead(nn.Module):
                 )
             )
 
-    def forward(self, feats1, feats2, feats3):  # Accept size_embed as parameter
-        feats = torch.cat([feats1, feats2, feats3], dim=-1)
+    def forward(self, feats1, feats2):  # Accept size_embed as parameter
+        feats = torch.cat([feats1, feats2], dim=-1)
 
         # Classification outputs
         classification_outputs = []
@@ -180,11 +174,10 @@ def evaluate_model(model, dataloader, criterion, gpu, classification_task_names=
         for batch in tqdm(dataloader, desc="Evaluating"):
             embeddings1 = batch["embeddings1"].cuda(gpu)
             embeddings2 = batch["embeddings2"].cuda(gpu)
-            embeddings3 = batch["embeddings3"].cuda(gpu)
             classification_labels = batch['classification_labels'].cuda(gpu)
             classification_mask = batch['classification_mask'].cuda(gpu)
             
-            classification_outputs = model(embeddings1, embeddings2, embeddings3)
+            classification_outputs = model(embeddings1, embeddings2)
             
             loss, _ = criterion(classification_outputs, classification_labels, classification_mask)
             total_loss += loss.item()
@@ -313,12 +306,11 @@ def main():
         for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1} [Train]"):
             embeddings1 = batch["embeddings1"].cuda(args.gpu)
             embeddings2 = batch["embeddings2"].cuda(args.gpu)
-            embeddings3 = batch["embeddings3"].cuda(args.gpu)
             classification_labels = batch['classification_labels'].cuda(args.gpu)
             classification_mask = batch['classification_mask'].cuda(args.gpu)
 
             optimizer.zero_grad()
-            classification_outputs = model(embeddings1, embeddings2, embeddings3)
+            classification_outputs = model(embeddings1, embeddings2)
             
             loss, loss_dict = criterion(classification_outputs, classification_labels, classification_mask)
             
