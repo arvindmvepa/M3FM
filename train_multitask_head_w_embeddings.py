@@ -287,6 +287,7 @@ def main():
     best_val_loss = float('inf')
     best_model_path = os.path.join(output_dir, "best_model.pt")
 
+    """
     # Training loop
     for epoch in range(args.num_epochs):
         model.train()
@@ -335,14 +336,18 @@ def main():
                 'val_loss': val_loss,
                 'val_metrics': val_metrics
             }
-            torch.save(checkpoint, os.path.join(output_dir, 'best_model.pt'))
+            torch.save(checkpoint, best_model_path)
             print(f"New best model saved with val loss: {val_loss:.4f}")
     
     print(f"Training completed. Best epoch: {best_epoch+1}, Best val loss: {best_val_loss:.4f}")
-    
+    """
     # Load best model for testing
     print("Loading best model for testing...")
-    checkpoint = torch.load(os.path.join(output_dir, 'best_model.pt'))
+    checkpoint = torch.load(
+        os.path.join(output_dir, 'best_model.pt'),
+        map_location=f"cuda:{args.gpu}",
+        weights_only=False
+    )
     model.load_state_dict(checkpoint['model_state_dict'])
     model.cuda(args.gpu)
     # Test evaluation
