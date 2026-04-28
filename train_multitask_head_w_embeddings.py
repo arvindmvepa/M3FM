@@ -66,7 +66,7 @@ class AuxVisionDataset(Dataset):
 
         pid = data['pid']
         embedding_path_ts0 = data["embedding_path_ts0"]
-        embedding = load_file(embedding_path_ts0)
+        embedding = load_file(embedding_path_ts0)['embedding']
         
         content_info = data['numeric_dict']
         
@@ -280,7 +280,6 @@ def main():
         total_loss = 0.0
 
         for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1} [Train]"):
-            print(f'batch["embedding"] {batch["embedding"]}')
             embedding = batch["embedding"].cuda(args.gpu)
             classification_labels = batch['classification_labels'].cuda(args.gpu)
 
