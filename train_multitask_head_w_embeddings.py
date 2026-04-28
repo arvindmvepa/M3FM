@@ -162,7 +162,6 @@ def evaluate_model(model, dataloader, criterion, gpu, classification_task_names=
     
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Evaluating"):
-            print(f'batch["embedding"].cuda(gpu) {batch["embedding"].cuda(gpu)}')
             embedding = batch["embedding"].cuda(gpu)
             classification_labels = batch['classification_labels'].cuda(gpu)
             classification_mask = batch['classification_mask'].cuda(gpu)
@@ -281,6 +280,7 @@ def main():
         total_loss = 0.0
 
         for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1} [Train]"):
+            print(f'batch["embedding"].cuda(gpu) {batch["embedding"].cuda(gpu)}')
             embedding = batch["embedding"].cuda(args.gpu)
             classification_labels = batch['classification_labels'].cuda(args.gpu)
 
