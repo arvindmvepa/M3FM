@@ -280,7 +280,7 @@ def main():
         total_loss = 0.0
 
         for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1} [Train]"):
-            print(f'batch["embedding"].cuda(gpu) {batch["embedding"].cuda(gpu)}')
+            print(f'batch["embedding"] {batch["embedding"]}')
             embedding = batch["embedding"].cuda(args.gpu)
             classification_labels = batch['classification_labels'].cuda(args.gpu)
 
