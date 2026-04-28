@@ -108,7 +108,7 @@ class CTViTMultitaskHead(nn.Module):
         embedding_dim=1024,
     ):
         super().__init__()
-        self.embedding_dim = embedding_dim*3
+        self.embedding_dim = embedding_dim*2
 
         # Classification heads
         self.classification_heads = nn.ModuleList()
