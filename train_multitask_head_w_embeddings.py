@@ -199,15 +199,28 @@ def evaluate_model(model, dataloader, criterion, gpu, classification_task_names=
             try:
                 labels = np.array(all_classification_labels[i])
                 probs = np.array(all_classification_probs[i])
-                
-                # Check if we have more than one class present
+
                 unique_labels = np.unique(labels)
-                if len(unique_labels) > 1:
-                    auroc = roc_auc_score(labels, probs, multi_class='ovr', average='macro')
-                    metrics[f'{task_name}_auroc'] = auroc
+                num_classes = probs.shape[1]
+                if len(unique_labels) <= 1:
+                    auroc = np.nan
+                elif num_classes == 2:
+                    # Binary AUROC: use probability of positive class only
+                    auroc = roc_auc_score(labels, probs[:, 1])
                 else:
-                    metrics[f'{task_name}_auroc'] = np.nan  # Cannot compute AUROC with only one class
-                    
+                    # Multiclass AUROC: restrict to classes present in y_true
+                    present_classes = np.unique(labels)
+                    # Option A: safer if some classes are missing in this split
+                    probs_present = probs[:, present_classes]
+                    probs_present = probs_present / probs_present.sum(axis=1, keepdims=True)
+                    auroc = roc_auc_score(
+                        labels,
+                        probs_present,
+                        labels=present_classes,
+                        multi_class='ovr',
+                        average='macro'
+                    )
+                metrics[f'{task_name}_auroc'] = auroc         
             except Exception as e:
                 print(f"Warning: Could not compute AUROC for {task_name}: {e}")
                 metrics[f'{task_name}_auroc'] = np.nan
