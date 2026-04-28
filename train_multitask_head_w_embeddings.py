@@ -66,7 +66,7 @@ class AuxVisionDataset(Dataset):
 
         pid = data['pid']
         embedding_path_ts0 = data["embedding_path_ts0"]
-        embedding = load_file(embedding_path_ts0)['embedding']
+        embeddings = load_file(embedding_path_ts0)['embeddings']
         
         content_info = data['numeric_dict']
         
@@ -86,7 +86,7 @@ class AuxVisionDataset(Dataset):
         
         return {
             "pid": pid,
-            "embedding": embedding, 
+            "embeddings": embeddings, 
             'classification_labels': classification_labels,
             'classification_mask': classification_mask,
         }
@@ -162,11 +162,11 @@ def evaluate_model(model, dataloader, criterion, gpu, classification_task_names=
     
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Evaluating"):
-            embedding = batch["embedding"].cuda(gpu)
+            embeddings = batch["embeddings"].cuda(gpu)
             classification_labels = batch['classification_labels'].cuda(gpu)
             classification_mask = batch['classification_mask'].cuda(gpu)
             
-            classification_outputs = model(embedding)
+            classification_outputs = model(embeddings)
             
             loss, _ = criterion(classification_outputs, classification_labels, classification_mask)
             total_loss += loss.item()
@@ -280,11 +280,11 @@ def main():
         total_loss = 0.0
 
         for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1} [Train]"):
-            embedding = batch["embedding"].cuda(args.gpu)
+            embeddings = batch["embeddings"].cuda(args.gpu)
             classification_labels = batch['classification_labels'].cuda(args.gpu)
 
             optimizer.zero_grad()
-            classification_outputs = model(embedding)
+            classification_outputs = model(embeddings)
             
             loss, loss_dict = criterion(classification_outputs, classification_labels)
             
