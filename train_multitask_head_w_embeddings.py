@@ -255,8 +255,7 @@ def main():
 
     # Build cancer classifier
     model = CTViTMultitaskHead(
-        num_classes_per_task=(8, 4, 7, 3, 3),
-        num_regression_tasks=2,
+        num_classes_per_task=(8, 8, 8, 5, 5, 5, 2),
     ).cuda(args.gpu)
 
     # Build datasets using M3FM's get_data function - pass img_root
