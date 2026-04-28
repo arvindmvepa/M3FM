@@ -282,11 +282,12 @@ def main():
         for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1} [Train]"):
             embeddings = batch["embeddings"].cuda(args.gpu)
             classification_labels = batch['classification_labels'].cuda(args.gpu)
+            classification_mask = batch['classification_mask'].cuda(args.gpu)
 
             optimizer.zero_grad()
             classification_outputs = model(embeddings)
             
-            loss, loss_dict = criterion(classification_outputs, classification_labels)
+            loss, loss_dict = criterion(classification_outputs, classification_labels, classification_mask)
             
             loss.backward()
             optimizer.step()
