@@ -179,16 +179,28 @@ class AuxVisionDataset(Dataset):
 
         with open(json_path, "r") as f:
             self.samples = json.load(f)
+            embedding_paths = sorted(set([s["embedding_path"] for s in self.samples]))
+            embedding_paths_ = set()
+            for path in embedding_paths:
+                if "_ts0" in path:
+                    path1 = path.replace("_ts0", "_ts1")
+                    path2 = path.replace("_ts0", "_ts2")
+                    embedding_paths_.add(path)
+                    if os.path.exists(path1):
+                        embedding_paths_.add(path1)
+                    if os.path.exists(path2):
+                        embedding_paths_.add(path2)
+            self.samples = sorted(embedding_paths_)
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        data = self.samples[idx]
+        embedding_path = self.samples[idx]
 
         # Create input dict for center crop preprocessing
         input_dict = {
-            'ct_path': data["embedding_path"],
+            'ct_path': embedding_path,
             'question': 'Predict multitask answers',
             'clinical_txt': '',
         }
@@ -199,7 +211,7 @@ class AuxVisionDataset(Dataset):
         return {
             "image": processed_data['data'][0],  # Extract the preprocessed image
             "size_embed": processed_data['size_embed'][0],  # Pass the precomputed size_embed
-            'ct_path': data["embedding_path"],
+            'ct_path': embedding_path,
         }
 
 
@@ -273,7 +285,7 @@ class TrainingArguments:
         default="/home/avepa/MedTrinity-25M/nlst_test_aux_vqa_delta2True_v1_m3fm.json",
         metadata={"help": "Path to test JSON file."}
     )
-    output_dir: str = field(default="./m3fm_embeddings", metadata={"help": "Output directory."})
+    output_dir: str = field(default="./m3fm_embeddings1", metadata={"help": "Output directory."})
     device: str = field(default="cuda", metadata={"help": "Device to use."})
     gpu: int = field(default=0, metadata={"help": "GPU ID to use."})
     tag: str = field(default="", metadata={"help": "Additional tag for output directory."})
