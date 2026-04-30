@@ -174,10 +174,11 @@ def get_data_center_crop(input_dict, args):
 
 
 class AuxVisionDataset(Dataset):
-    def __init__(self, json_path, mode="train", img_root="/hsuraid/avepa/nlst_npy_m3fm"):
+    def __init__(self, json_path, mode="train", config_args=None, img_root="/hsuraid/avepa/nlst_npy_m3fm"):
         super().__init__()
         self.mode = mode
         self.img_root = img_root
+        self.config_args = config_args
 
         with open(json_path, "r") as f:
             samples = json.load(f)
@@ -500,9 +501,9 @@ def main():
     ).cuda(args.gpu)
 
     # Build datasets using M3FM's get_data function - pass img_root
-    train_dataset = AuxVisionDataset(args.train_json, mode="train")
-    val_dataset = AuxVisionDataset(args.val_json, mode="val")
-    test_dataset = AuxVisionDataset(args.test_json, mode="test")
+    train_dataset = AuxVisionDataset(args.train_json, mode="train", config_args=config_args)
+    val_dataset = AuxVisionDataset(args.val_json, mode="val", config_args=config_args)
+    test_dataset = AuxVisionDataset(args.test_json, mode="test", config_args=config_args)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True, num_workers=4)
