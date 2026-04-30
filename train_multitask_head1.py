@@ -214,9 +214,6 @@ class AuxVisionDataset(Dataset):
         data = self.samples[idx]
 
         pid = data['pid']
-        embedding_path_ts0 = data["embedding_path_ts0"]
-        embeddings = load_file(embedding_path_ts0)['embeddings']
-        
         content_info = data['numeric_dict']
         
         att_ts0 = content_info['att_ts0'] - 1
@@ -232,10 +229,18 @@ class AuxVisionDataset(Dataset):
         ], dtype=torch.long)
         
         classification_mask = (classification_labels != -1)
+
+        input_dict = {
+            'ct_path': data["embedding_path"],
+            'question': 'Predict multitask answers',
+            'clinical_txt': '',
+        }
+        processed_data = get_data_center_crop(input_dict, self.config_args)
         
         return {
             "pid": pid,
-            "embeddings": embeddings, 
+            "image": processed_data['data'][0],  # Extract the preprocessed image
+            "size_embed": processed_data['size_embed'][0],  # P0ass the precomputed size_embed
             'classification_labels': classification_labels,
             'classification_mask': classification_mask,
         }
