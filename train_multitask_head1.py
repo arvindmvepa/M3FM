@@ -276,11 +276,6 @@ class CTViTMultitaskHead(nn.Module):
 
     def forward(self, image, size_embed):
         B = image.size(0)
-
-        # Classification outputs
-        classification_outputs = []
-        for head in self.classification_heads:
-            classification_outputs.append(head(feats))
         
         self.m3fm_model.ims = (image.shape[2], image.shape[3], image.shape[4])
         img_embeds = self.m3fm_model.img_tokenizer(image)
