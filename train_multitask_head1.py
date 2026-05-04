@@ -195,11 +195,11 @@ class AuxVisionDataset(Dataset):
                     new_sample = dict(sample)
                     new_sample['embedding_path'] = embedding_path_ts0
                     new_samples.append(new_sample)
-                if os.path.exists(embedding_path_ts1):
+                if os.path.exists(embedding_path_ts1) and self.mode != "test":
                     new_sample = dict(sample)
                     new_sample['embedding_path'] = embedding_path_ts1
                     new_samples.append(new_sample)          
-                if os.path.exists(embedding_path_ts2):
+                if os.path.exists(embedding_path_ts2) and self.mode != "test":
                     new_sample = dict(sample)
                     new_sample['embedding_path'] = embedding_path_ts2
                     new_samples.append(new_sample)
@@ -512,6 +512,7 @@ def main():
     best_model_path = os.path.join(output_dir, "best_model.pt")
 
     # Training loop
+    """
     for epoch in range(args.num_epochs):
         model.train()
         total_loss = 0.0
@@ -564,7 +565,7 @@ def main():
             print(f"New best model saved with val loss: {val_loss:.4f}")
     
     print(f"Training completed. Best epoch: {best_epoch+1}, Best val loss: {best_val_loss:.4f}")
-
+    """
     # Load best model for testing
     print("Loading best model for testing...")
     checkpoint = torch.load(
