@@ -209,8 +209,8 @@ class EmbeddingTrajectoryDataset(Dataset):
         print(f"Skipped train samples: no_e0={self.skipped_no_e0}, "
               f"require_all_targets={self.require_all_targets}, "
               f"missing_targets={self.skipped_missing_targets}, "
-              f"percent_missing={self.percent_missing:.2%}, "
-              f"ts2 missing: {self.percent_missing_ts1:.2%}, "
+              f"percent_missing={self.percent_missing:.2%}, \n"
+              f"ts2 missing: {self.percent_missing_ts1:.2%}, \n"
               f"ts3 missing: {self.percent_missing_ts2:.2%})"
         )
 
