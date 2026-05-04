@@ -177,6 +177,7 @@ class EmbeddingTrajectoryDataset(Dataset):
         self.samples = []
         skipped_no_e0 = 0
         skipped_missing_targets = 0
+        percent_missing = 0.0
 
         for sample in raw_samples:
             e0_path = self.resolve_embedding_path(sample, 0)
@@ -190,11 +191,19 @@ class EmbeddingTrajectoryDataset(Dataset):
             if require_all_targets and not all(target_exists):
                 skipped_missing_targets += 1
                 continue
+            percent_missing += sum(1 for exists in target_exists if not exists) / len(target_exists)
 
             self.samples.append(sample)
 
         self.skipped_no_e0 = skipped_no_e0
         self.skipped_missing_targets = skipped_missing_targets
+        self.percent_missing = percent_missing / len(self.samples) if self.samples else 0.0
+
+        print(f"Skipped train samples: no_e0={self.skipped_no_e0}, "
+              f"require_all_targets={self.require_all_targets}, "
+              f"missing_targets={self.skipped_missing_targets}, "
+              f"percent_missing={self.percent_missing:.2%}"
+        )
 
     def __len__(self) -> int:
         return len(self.samples)
