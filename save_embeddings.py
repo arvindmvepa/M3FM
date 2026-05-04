@@ -332,7 +332,11 @@ def main():
     model_full.cuda(args.gpu)
     
     # Load checkpoint (matching inference.py)
-    state_dict = torch.load(args.model_path, map_location='cpu', weights_only=False)
+    if "best_model.pt" in args.model_path:
+        state_dict = torch.load(args.model_path, map_location='cpu', weights_only=False)['model_state_dict']
+        state_dict = {key.replace("m3fm_model.", ""): val for key, val in state_dict.items()}
+    else:
+        state_dict = torch.load(args.model_path, map_location='cpu', weights_only=False)
     msg = model_full.load_state_dict(state_dict, strict=False)
     logger.info(f"Loaded checkpoint with message: {msg}")
     
