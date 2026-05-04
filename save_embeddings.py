@@ -332,7 +332,7 @@ def main():
     model_full.cuda(args.gpu)
     
     # Load checkpoint (matching inference.py)
-    state_dict = torch.load(args.model_path, map_location='cpu')
+    state_dict = torch.load(args.model_path, map_location='cpu', weights_only=False)
     msg = model_full.load_state_dict(state_dict, strict=False)
     logger.info(f"Loaded checkpoint with message: {msg}")
     
