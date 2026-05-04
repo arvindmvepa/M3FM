@@ -285,6 +285,7 @@ class TrainingArguments:
         default="/home/avepa/MedTrinity-25M/nlst_test_aux_vqa_delta2True_v1_m3fm.json",
         metadata={"help": "Path to test JSON file."}
     )
+    pick_dataset: str = field(default=None, metadata={"Pick dataset to generate embeddings for"})
     output_dir: str = field(default="./m3fm_embeddings1", metadata={"help": "Output directory."})
     device: str = field(default="cuda", metadata={"help": "Device to use."})
     gpu: int = field(default=0, metadata={"help": "GPU ID to use."})
@@ -363,9 +364,19 @@ def main():
     logger.info(f"Dataset sizes => train={len(train_dataset)}, val={len(val_dataset)}, test={len(test_dataset)}")
     logger.info(f"Using crop_size: {crop_size}")
 
-    generate_embeddings(model, train_loader, args, os.path.join(output_dir, "train"), tag="train")
-    generate_embeddings(model, val_loader, args, os.path.join(output_dir, "val"), tag="val")
-    generate_embeddings(model, test_loader, args, os.path.join(output_dir, "test"), tag="test")
+    if args.pick_dataset:
+        if args.pick_dataset == "train":
+            generate_embeddings(model, train_loader, args, os.path.join(output_dir, "train"), tag="train")
+        elif args.pick_dataset == "val":
+            generate_embeddings(model, val_loader, args, os.path.join(output_dir, "val"), tag="val")
+        elif args.pick_dataset == "test":
+            generate_embeddings(model, test_loader, args, os.path.join(output_dir, "test"), tag="test")
+        else:
+            logger.error(f"Invalid pick_dataset value: {args.pick_dataset}. Must be one of 'train', 'val', or 'test'.")
+    else:
+        generate_embeddings(model, train_loader, args, os.path.join(output_dir, "train"), tag="train")
+        generate_embeddings(model, val_loader, args, os.path.join(output_dir, "val"), tag="val")
+        generate_embeddings(model, test_loader, args, os.path.join(output_dir, "test"), tag="test")
 
 if __name__ == "__main__":
     main()

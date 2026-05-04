@@ -164,7 +164,8 @@ class EmbeddingTrajectoryDataset(Dataset):
         self,
         json_path: str,
         num_steps: int,
-        require_all_targets: bool = True
+        require_all_targets: bool = True,
+        dataset: str = "train"
     ):
         super().__init__()
         self.json_path = json_path
@@ -206,7 +207,7 @@ class EmbeddingTrajectoryDataset(Dataset):
         self.percent_missing_ts1 = percent_missing_ts1 / len(self.samples) if self.samples else 0.0
         self.percent_missing_ts2 = percent_missing_ts2 / len(self.samples) if self.samples else 0.0
 
-        print(f"Skipped train samples: no_e0={self.skipped_no_e0}, "
+        print(f"Skipped {dataset} samples: no_e0={self.skipped_no_e0}, "
               f"require_all_targets={self.require_all_targets}, "
               f"missing_targets={self.skipped_missing_targets}, "
               f"percent_missing={self.percent_missing:.2%}, \n"
@@ -1025,17 +1026,20 @@ def main():
     train_dataset = EmbeddingTrajectoryDataset(
         args.train_json,
         num_steps=args.num_steps,
-        require_all_targets=args.require_all_targets
+        require_all_targets=args.require_all_targets,
+        dataset="train"
     )
     val_dataset = EmbeddingTrajectoryDataset(
         args.val_json,
         num_steps=args.num_steps,
-        require_all_targets=args.require_all_targets
+        require_all_targets=args.require_all_targets,
+        dataset="val"
     )
     test_dataset = EmbeddingTrajectoryDataset(
         args.test_json,
         num_steps=args.num_steps,
-        require_all_targets=args.require_all_targets
+        require_all_targets=args.require_all_targets,
+        dataset="test"
     )
 
     logger.info(
