@@ -195,16 +195,14 @@ class EmbeddingTrajectoryDataset(Dataset):
                 skipped_missing_targets += 1
                 continue
             percent_missing += sum(1 for exists in target_exists if not exists) / len(target_exists)
-            percent_missing_ts0 += 0 if target_exists[0] else 1
-            percent_missing_ts1 += 0 if target_exists[1] else 1
-            percent_missing_ts2 += 0 if target_exists[2] else 1
+            percent_missing_ts1 += 0 if target_exists[0] else 1
+            percent_missing_ts2 += 0 if target_exists[1] else 1
 
             self.samples.append(sample)
-
+    
         self.skipped_no_e0 = skipped_no_e0
         self.skipped_missing_targets = skipped_missing_targets
         self.percent_missing = percent_missing / len(self.samples) if self.samples else 0.0
-        self.percent_missing_ts0 = percent_missing_ts0 / len(self.samples) if self.samples else 0.0
         self.percent_missing_ts1 = percent_missing_ts1 / len(self.samples) if self.samples else 0.0
         self.percent_missing_ts2 = percent_missing_ts2 / len(self.samples) if self.samples else 0.0
 
@@ -212,7 +210,6 @@ class EmbeddingTrajectoryDataset(Dataset):
               f"require_all_targets={self.require_all_targets}, "
               f"missing_targets={self.skipped_missing_targets}, "
               f"percent_missing={self.percent_missing:.2%}, "
-              f"(ts1 missing: {self.percent_missing_ts0:.2%}, "
               f"ts2 missing: {self.percent_missing_ts1:.2%}, "
               f"ts3 missing: {self.percent_missing_ts2:.2%})"
         )
