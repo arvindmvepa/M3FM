@@ -352,31 +352,31 @@ def main():
     ).cuda(args.gpu)
     model.eval()
 
-    # Build datasets using M3FM's get_data function - pass img_root
-    train_dataset = AuxVisionDataset(args.train_json, mode="train", config_args=config_args, img_root=args.img_root)
-    val_dataset = AuxVisionDataset(args.val_json, mode="val", config_args=config_args, img_root=args.img_root)
-    test_dataset = AuxVisionDataset(args.test_json, mode="test", config_args=config_args, img_root=args.img_root)
+    if not args.pick_dataset:
+        # Build datasets using M3FM's get_data function - pass img_root
+        train_dataset = AuxVisionDataset(args.train_json, mode="train", config_args=config_args, img_root=args.img_root)
+        val_dataset = AuxVisionDataset(args.val_json, mode="val", config_args=config_args, img_root=args.img_root)
+        test_dataset = AuxVisionDataset(args.test_json, mode="test", config_args=config_args, img_root=args.img_root)
 
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, drop_last=True, num_workers=4)
-    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, drop_last=True, num_workers=4)
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, drop_last=True, num_workers=4)
+        train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, drop_last=True, num_workers=4)
+        val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, drop_last=True, num_workers=4)
+        test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, drop_last=True, num_workers=4)
 
-    logger.info(f"Dataset sizes => train={len(train_dataset)}, val={len(val_dataset)}, test={len(test_dataset)}")
-    logger.info(f"Using crop_size: {crop_size}")
-
-    if args.pick_dataset:
-        if args.pick_dataset == "train":
-            generate_embeddings(model, train_loader, args, os.path.join(output_dir, "train"), tag="train")
-        elif args.pick_dataset == "val":
-            generate_embeddings(model, val_loader, args, os.path.join(output_dir, "val"), tag="val")
-        elif args.pick_dataset == "test":
-            generate_embeddings(model, test_loader, args, os.path.join(output_dir, "test"), tag="test")
-        else:
-            logger.error(f"Invalid pick_dataset value: {args.pick_dataset}. Must be one of 'train', 'val', or 'test'.")
-    else:
+        logger.info(f"Dataset sizes => train={len(train_dataset)}, val={len(val_dataset)}, test={len(test_dataset)}")
+        logger.info(f"Using crop_size: {crop_size}")
+        
         generate_embeddings(model, train_loader, args, os.path.join(output_dir, "train"), tag="train")
         generate_embeddings(model, val_loader, args, os.path.join(output_dir, "val"), tag="val")
         generate_embeddings(model, test_loader, args, os.path.join(output_dir, "test"), tag="test")
+
+
+    else:
+        if args.pick_dataset not in ["train", "val", "test"]:
+            dataset = AuxVisionDataset(args.train_json, mode=args.pick_dataset, config_args=config_args, img_root=args.img_root)
+            loader = DataLoader(dataset, batch_size=1, shuffle=True, drop_last=True, num_workers=4)
+            generate_embeddings(model, loader, args, os.path.join(output_dir, args.pick_dataset), tag=args.pick_dataset)
+        else:
+            logger.error(f"Invalid pick_dataset value: {args.pick_dataset}. Must be one of 'train', 'val', or 'test'.")
 
 if __name__ == "__main__":
     main()
