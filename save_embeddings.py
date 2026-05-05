@@ -372,7 +372,12 @@ def main():
 
     else:
         if args.pick_dataset in ["train", "val", "test"]:
-            dataset = AuxVisionDataset(args.train_json, mode=args.pick_dataset, config_args=config_args, img_root=args.img_root)
+            if args.pick_dataset == "train":
+                dataset = AuxVisionDataset(args.train_json, mode=args.pick_dataset, config_args=config_args, img_root=args.img_root)
+            elif args.pick_dataset == "val":
+                dataset = AuxVisionDataset(args.val_json, mode=args.pick_dataset, config_args=config_args, img_root=args.img_root)
+            elif args.pick_dataset == "test":
+                dataset = AuxVisionDataset(args.test_json, mode=args.pick_dataset, config_args=config_args, img_root=args.img_root)
             loader = DataLoader(dataset, batch_size=1, shuffle=True, drop_last=True, num_workers=4)
             generate_embeddings(model, loader, args, os.path.join(output_dir, args.pick_dataset), tag=args.pick_dataset)
         else:
