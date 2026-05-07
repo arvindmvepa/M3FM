@@ -221,8 +221,6 @@ class EmbeddingTrajectoryDataset(Dataset):
     def resolve_embedding_path(self, sample: Dict, t: int) -> Optional[str]:
         explicit_key = f"embedding_path_ts{t}"
         path = sample[explicit_key]
-        if "m3fm_embeddings1" not in path:
-            path = path.replace("m3fm_embeddings", "m3fm_embeddings1")
         return path
 
     def make_compact_aux_labels(self, numeric: Dict) -> Tuple[torch.Tensor, torch.Tensor]:
