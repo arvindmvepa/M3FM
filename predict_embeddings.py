@@ -111,8 +111,6 @@ class TS0InferenceDataset(Dataset):
         path = sample.get(key, "")
         if not path:
             return None
-        if "m3fm_embeddings1" not in path:
-            path = path.replace("m3fm_embeddings", "m3fm_embeddings1")
         return path
 
     def __len__(self) -> int:
